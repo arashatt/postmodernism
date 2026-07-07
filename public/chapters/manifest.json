@@ -1,0 +1,23 @@
+{
+  "book": {
+    "title": "نوشتار و امر قطعه‌وار",
+    "subtitle": "جستارهایی در نظریهٔ ادبی مدرن",
+    "author": "نویسندهٔ نمونه",
+    "translator": "آرش عطاری",
+    "publisher": "نشر نمونه",
+    "city": "تهران",
+    "year": "۱۴۰۵",
+    "series": "مجموعهٔ نظریه و نقد ادبی ــ ۱۲",
+    "originalTitle": "Writing and the Fragmentary",
+    "isbn": "978-600-0000-00-0",
+    "edition": "اول، ۱۴۰۵",
+    "format": "وزیری، ۲۴۰ صفحه",
+    "about": "chapters/about.md",
+    "orderUrl": ""
+  },
+  "chapters": [
+    { "id": "pishgoftar", "title": "پیشگفتار مترجم", "kind": "front", "file": "chapters/pishgoftar.md" },
+    { "id": "fasl-1", "title": "نوشتار و تجربهٔ بیرون", "kind": "chapter", "file": "chapters/fasl-1.md" },
+    { "id": "fasl-2", "title": "بنجامین و آستانهٔ ترجمه", "kind": "chapter", "file": "chapters/fasl-2.md" }
+  ]
+}
