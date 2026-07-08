@@ -5,7 +5,7 @@ import Menu from './components/Menu.jsx';
 import Glossary from './components/Glossary.jsx';
 import { parseBookML } from './lib/bookml.js';
 import { getPos, getMarks, addMark, removeMark, getSettings, setSettings } from './lib/store.js';
-import { blockTexts } from './lib/bookml.js';
+import { blockTexts, paginate } from './lib/bookml.js';
 import { indexRow } from './lib/search.js';
 
 function useHashRoute() {
@@ -54,6 +54,7 @@ export default function App() {
   const [marks, setMarks] = useState(getMarks);
   const [justMarked, setJustMarked] = useState(false);
   const [searchIdx, setSearchIdx] = useState([]);
+  const [pagesInfo, setPagesInfo] = useState({});
   const [settings, setSettingsState] = useState(getSettings);
   const route = useHashRoute();
 
@@ -89,20 +90,23 @@ export default function App() {
           .then((r) => (r.ok ? r.text() : ''))
           .then((t) => {
             const p = parseBookML(t);
+            const off = p.epigraph ? 1 : 0;   // shared bi convention: epigraph = bi 0
             return {
               id: c.id,
               headings: p.blocks.filter((b) => b.type === 'h2').map((b) => b.text),
+              pages: paginate(p).count,
               terms: p.footnotes
                 .filter((f) => f.kind === 'latin' && f.term)   // «term»[[gloss]] only; bare [[…]] are citations
-                .map((f) => ({ latin: f.text, term: f.term, block: f.block, chapterId: c.id })),
+                .map((f) => ({ latin: f.text, term: f.term, block: f.block + off, chapterId: c.id })),
               search: blockTexts(p).map((row) => indexRow({ ...row, chapterId: c.id })),
             };
           })
-          .catch(() => ({ id: c.id, headings: [], terms: [], search: [] }))
+          .catch(() => ({ id: c.id, headings: [], terms: [], search: [], pages: 1 }))
       )
     ).then((rows) => {
       if (!live) return;
       setHeadings(Object.fromEntries(rows.map((r) => [r.id, r.headings])));
+      setPagesInfo(Object.fromEntries(rows.map((r) => [r.id, r.pages || 1])));
       setTerms(rows.flatMap((r) => r.terms));
       setSearchIdx(rows.flatMap((r) => r.search || []));
     });
@@ -163,6 +167,7 @@ export default function App() {
           index={chapterIndex}
           anchor={route.anchor}
           setFolio={setFolio}
+          pagesInfo={pagesInfo}
         />
       ) : (
         <Home manifest={manifest} headings={headings} setFolio={setFolio} pos={getPos()} hasGlossary={terms.length > 0} />

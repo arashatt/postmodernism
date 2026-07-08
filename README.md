@@ -199,6 +199,30 @@ the real cover, or point `"cover"` in the manifest's `book` object at any
 image path. iOS support for artwork/actions varies by version; play/pause
 and metadata are solid, ±10 s appears on recent iOS.
 
+
+## Pagination (بخش‌بندی فصل‌ها)
+
+Chapters are automatically paginated: **every `##` heading starts a new
+page**, and the content before the first heading (with the epigraph) is
+page 1. A chapter with no headings stays a single page — nothing to
+configure.
+
+Routes: `#/fasl-1` is page 1, `#/fasl-1/p-2` is page 2, and the back
+button walks pages. The nav at the page foot shows the previous/next
+**section title** (RTL order: previous on the right, next on the left),
+a «۲ / ۳» indicator, and crosses chapter boundaries — the previous-link
+from a chapter's first page lands on the *last* page of the previous
+chapter, so reading backward is continuous.
+
+Every pre-pagination deep link still works and resolves to the right page:
+TOC section links (`sec-K`), bookmarks and search results (`b-N`),
+glossary occurrences, «ادامهٔ خواندن» (`resume`), and the printed QR codes
+(chapter root → page 1). Footnotes print at the foot of the page they
+belong to, keeping their chapter-global numbering.
+
+With a voiceover playing, the read-along **flips pages automatically** as
+narration crosses a section boundary — audio remains one file per chapter.
+
 ## واژه‌نامه (auto-glossary)
 
 The site builds a glossary page (`#/vajenameh`, linked from the home TOC

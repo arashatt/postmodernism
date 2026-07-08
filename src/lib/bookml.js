@@ -173,3 +173,34 @@ export function blockTexts(parsed) {
   }
   return rows;
 }
+
+// ---------------------------------------------------------------------------
+// Pagination: every «##» heading starts a new page; content before the first
+// heading (plus the epigraph) is page 1. A chapter with no headings is a
+// single page. Block indices ("bi") follow the same convention as blockTexts:
+// bi 0 = epigraph (when present), then parsed.blocks shifted by that offset —
+// the convention bookmarks, search, and the glossary all share.
+export function paginate(parsed) {
+  const off = parsed.epigraph ? 1 : 0;
+  const blockPage = [];          // page of parsed.blocks[i]
+  const pages = [{ heading: null }];
+  const headingPage = [];        // page of the k-th h2 (for sec-K links)
+  let page = 1;
+  parsed.blocks.forEach((b, i) => {
+    if (b.type === 'h2') {
+      if (i > 0) { page += 1; pages.push({ heading: b.text }); }
+      else pages[0].heading = b.text;
+      headingPage.push(page);
+    }
+    blockPage.push(page);
+  });
+  const count = page;
+  const pageOfBi = (bi) => {
+    if (off && bi === 0) return 1;
+    const i = bi - off;
+    if (i < 0) return 1;
+    if (i >= blockPage.length) return count;
+    return blockPage[i];
+  };
+  return { count, pages, blockPage, headingPage, off, pageOfBi };
+}

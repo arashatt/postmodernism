@@ -49,7 +49,7 @@ body{
   transition:background-color .35s ease, color .35s ease;
 }
 body.has-player{padding-bottom:calc(var(--playerbar) + env(safe-area-inset-bottom, 0px))}
-.lr{direction:ltr;unicode-bidi:isolate;font-family:'EB Garamond',serif;font-style:italic;font-size:1.08em}
+.lr{direction:ltr;unicode-bidi:isolate;font-family:'EB Garamond',serif;font-style:italic;font-size:.92em}
 
 /* ---------- running head ---------- */
 .runhead{
@@ -541,4 +541,22 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 /* smooth theme-wide color transitions on major surfaces */
 main,blockquote,.footnotes,.colophon,.gloss-row,.chapter-body h2{
   transition:color .35s ease,border-color .35s ease,background-color .35s ease;
+}
+
+/* ---------- pagination ---------- */
+.chapter-open .pg-top{
+  margin-top:1.2rem;color:var(--quiet);font-size:.9rem;letter-spacing:.02em;
+}
+.chapter-open.compact{
+  padding-top:calc(var(--headh) + 2.6rem);
+  text-align:center;
+}
+.chapter-open.compact .chlabel{
+  font-size:1.05rem;color:var(--ink);margin-bottom:.2rem;
+}
+.chapter-open.compact .pg-top{margin-top:.35rem;margin-bottom:2.2rem}
+.chapter-nav{align-items:baseline}
+.pg-ind{
+  color:var(--quiet);font-size:.92rem;font-variant-numeric:tabular-nums;
+  align-self:center;
 }

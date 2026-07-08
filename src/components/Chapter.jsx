@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { parseBookML, normalize, faDigits, ORDINALS, ABJAD } from '../lib/bookml.js';
+import { parseBookML, paginate, normalize, faDigits, ORDINALS, ABJAD } from '../lib/bookml.js';
 import { parseCues, cueWords, align } from '../lib/readalong.js';
 import { getPos, setPos } from '../lib/store.js';
 import QuoteCapture from './QuoteCard.jsx';
@@ -9,9 +9,13 @@ const reduceMotion = () =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Tokenize parsed BookML into a render plan + normalized word list.
-// Every readable word gets a global index shared with the aligner.
+// Every readable word gets a global index shared with the aligner, and a
+// page number so the read-along can flip pages as narration advances.
 function tokenize(parsed) {
+  const pagination = paginate(parsed);
   const norms = [];
+  const wordPage = [];
+  let curPage = 1;
   const words = (text) =>
     text.split(/(\s+)/).filter(Boolean).map((p) => {
       if (/^\s+$/.test(p)) return { sp: p };
@@ -19,31 +23,35 @@ function tokenize(parsed) {
       if (!n) return { sp: p };
       const i = norms.length;
       norms.push(n);
+      wordPage.push(curPage);
       return { w: p, i };
     });
   const segs = (list) =>
     list.map((s) => (s.t === 'ref' ? s : { t: 'words', items: words(s.text) }));
 
+  const epigraph = parsed.epigraph
+    ? { lines: parsed.epigraph.lines.map(words), source: parsed.epigraph.source }
+    : null;
+
   let sec = 0;
-  const blocks = parsed.blocks.map((b) => {
+  const blocks = parsed.blocks.map((b, i) => {
+    curPage = pagination.blockPage[i];
     if (b.type === 'p' || b.type === 'quote') return { ...b, segs: segs(b.segs) };
     if (b.type === 'h2') return { ...b, sec: sec++, items: words(b.text) };
     if (b.type === 'poem')
       return { ...b, beyts: b.beyts.map(([a, z]) => [words(a), words(z)]) };
     return b;
   });
-  const epigraph = parsed.epigraph
-    ? { lines: parsed.epigraph.lines.map(words), source: parsed.epigraph.source }
-    : null;
-  return { epigraph, blocks, footnotes: parsed.footnotes, norms };
+  return { epigraph, blocks, footnotes: parsed.footnotes, norms, wordPage, pagination };
 }
 
-export default function Chapter({ manifest, index, anchor, setFolio }) {
+export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }) {
   const meta = manifest.chapters[index];
   const dev = new URLSearchParams(window.location.search).has('dev');
 
   const [text, setText] = useState(null);
   const [missing, setMissing] = useState(false);
+  const [page, setPage] = useState(1);
   const [audioSrc, setAudioSrc] = useState(null);
   const [hasSync, setHasSync] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -54,17 +62,23 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
   const audioRef = useRef(null);
   const bodyRef = useRef(null);
   const wordEls = useRef([]);
-  const timesRef = useRef(null);   // number|null per word index
-  const timedRef = useRef([]);     // [{t, i}] sorted by t
+  const timesRef = useRef(null);
+  const timedRef = useRef([]);
   const lastRef = useRef(-1);
   const rafRef = useRef(null);
   const msPosRef = useRef(0);
+  const pageRef = useRef(1);
+  const flipRef = useRef(0);
+  const pendingBiRef = useRef(null);
 
   const chapterNo = manifest.chapters
     .slice(0, index + 1)
     .filter((c) => c.kind === 'chapter').length;
+  const chLabel = meta.kind === 'chapter'
+    ? `فصل ${ORDINALS[chapterNo - 1] || faDigits(chapterNo)}` : null;
 
   useEffect(() => { setFolio(ABJAD[index] || faDigits(index + 1)); }, [index, setFolio]);
+  useEffect(() => { pageRef.current = page; }, [page]);
 
   // ---- chapter text ----
   useEffect(() => {
@@ -75,6 +89,50 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
   }, [meta.file]);
 
   const doc = useMemo(() => (text ? tokenize(parseBookML(text)) : null), [text]);
+  const pageCount = doc ? doc.pagination.count : 1;
+
+  // ---- route anchor -> page (+ optional scroll target) ----
+  // p-N: page N.  sec-K: page of the K-th heading.  b-N / resume: page of a
+  // block, then scroll to it. All pre-pagination links keep working.
+  useEffect(() => {
+    if (!doc) return;
+    const pg = doc.pagination;
+    let target = 1;
+    let bi = null;
+    if (!anchor) target = 1;
+    else if (anchor.startsWith('p-')) target = Math.min(Math.max(+anchor.slice(2) || 1, 1), pg.count);
+    else if (anchor.startsWith('sec-')) target = pg.headingPage[+anchor.slice(4)] || 1;
+    else if (anchor.startsWith('b-')) { bi = +anchor.slice(2); target = pg.pageOfBi(bi); }
+    else if (anchor === 'resume') {
+      const pos = getPos();
+      if (pos && pos.chapterId === meta.id) { bi = pos.block; target = pg.pageOfBi(bi); }
+    }
+    pendingBiRef.current = bi;
+    setPage(target);
+    if (bi == null) window.scrollTo(0, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, anchor, meta.id]);
+
+  // after the page's blocks mount: scroll to a pending block, restore highlight
+  useEffect(() => {
+    if (!doc) return;
+    const bi = pendingBiRef.current;
+    if (bi != null) {
+      pendingBiRef.current = null;
+      requestAnimationFrame(() => {
+        bodyRef.current?.querySelector(`[data-bi="${bi}"]`)
+          ?.scrollIntoView({ behavior: 'auto', block: 'start' });
+      });
+    }
+    // re-mark read words on the freshly mounted page
+    lastRef.current = -1;
+    requestAnimationFrame(() => paint());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, page]);
+
+  const gotoPage = (p) => {
+    window.location.hash = `#/${meta.id}${p > 1 ? `/p-${p}` : ''}`;
+  };
 
   // ---- audio + cues detection (convention: audio/<id>.mp3 + .srt) ----
   useEffect(() => {
@@ -86,7 +144,7 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
         try {
           const r = await fetch(src, { method: 'HEAD' });
           if (r.ok && live) { setAudioSrc(src); break; }
-        } catch { /* server file not there yet */ }
+        } catch { /* not uploaded yet */ }
       }
       for (const src of cueCandidates) {
         try {
@@ -115,7 +173,35 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
       : 'هیچ واژه‌ای هم‌خوان نشد؛ فایل زمان‌بندی را بررسی کنید.');
   }
 
-  const bodyEls = () => Array.from(bodyRef.current?.children || []);
+  // ---- media session: lock-screen / notification playback ----
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !audioSrc) return;
+    const ms = navigator.mediaSession;
+    try {
+      ms.metadata = new MediaMetadata({
+        title: meta.title,
+        artist: manifest.book.translator ? `خوانش: ${manifest.book.translator}` : manifest.book.author,
+        album: manifest.book.title,
+        artwork: [{ src: manifest.book.cover || 'cover.png', sizes: '512x512', type: 'image/png' }],
+      });
+    } catch { /* unavailable */ }
+    const a = () => audioRef.current;
+    const H = (name, fn) => { try { ms.setActionHandler(name, fn); } catch { /* unsupported */ } };
+    H('play', () => a()?.play());
+    H('pause', () => a()?.pause());
+    H('seekbackward', (d) => seekTo((a()?.currentTime || 0) - (d.seekOffset || 10)));
+    H('seekforward', (d) => seekTo((a()?.currentTime || 0) + (d.seekOffset || 10)));
+    H('seekto', (d) => { if (d.seekTime != null) seekTo(d.seekTime); });
+    const prevCh = manifest.chapters[index - 1];
+    const nextCh = manifest.chapters[index + 1];
+    H('previoustrack', prevCh ? () => { window.location.hash = `#/${prevCh.id}`; } : null);
+    H('nexttrack', nextCh ? () => { window.location.hash = `#/${nextCh.id}`; } : null);
+    return () => {
+      ['play', 'pause', 'seekbackward', 'seekforward', 'seekto', 'previoustrack', 'nexttrack']
+        .forEach((n) => { try { ms.setActionHandler(n, null); } catch { /* noop */ } });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioSrc, meta.id, index]);
 
   // ---- painting ----
   function keepInView(el) {
@@ -136,9 +222,18 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
       const mid = (lo + hi) >> 1;
       if (timed[mid].t <= t) { idx = mid; lo = mid + 1; } else hi = mid - 1;
     }
+    const el = (k) => wordEls.current[timed[k].i];
+    // narration moved onto a word that lives on another page: flip to it
+    if (idx >= 0 && !el(idx) && doc) {
+      const p = doc.wordPage[timed[idx].i];
+      if (p && p !== pageRef.current && Date.now() - flipRef.current > 700) {
+        flipRef.current = Date.now();
+        gotoPage(p);
+      }
+      return;
+    }
     const last = lastRef.current;
     if (idx === last) return;
-    const el = (k) => wordEls.current[timed[k].i];
     if (last >= 0 && el(last)) el(last).classList.remove('current');
     if (idx > last) {
       for (let i = Math.max(last, 0); i <= idx; i++) el(i)?.classList.add('read');
@@ -163,80 +258,44 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
           navigator.mediaSession.setPositionState({
             duration: a.duration, playbackRate: a.playbackRate, position: a.currentTime,
           });
-        } catch { /* not supported */ }
+        } catch { /* unsupported */ }
       }
     }
     rafRef.current = a && !a.paused ? requestAnimationFrame(tick) : null;
   }
   useEffect(() => () => rafRef.current && cancelAnimationFrame(rafRef.current), []);
 
-  // Media Session: notification-shade (Android) and lock-screen /
-  // Control Center (iOS) playback with chapter metadata and cover art.
-  useEffect(() => {
-    if (!('mediaSession' in navigator) || !audioSrc) return;
-    const ms = navigator.mediaSession;
-    try {
-      ms.metadata = new MediaMetadata({
-        title: meta.title,
-        artist: manifest.book.translator ? `خوانش: ${manifest.book.translator}` : manifest.book.author,
-        album: manifest.book.title,
-        artwork: [
-          { src: manifest.book.cover || 'cover.png', sizes: '512x512', type: 'image/png' },
-        ],
-      });
-    } catch { /* MediaMetadata unavailable */ }
-    const a = () => audioRef.current;
-    const H = (name, fn) => { try { ms.setActionHandler(name, fn); } catch { /* unsupported action */ } };
-    H('play', () => a()?.play());
-    H('pause', () => a()?.pause());
-    H('seekbackward', (d) => seekTo((a()?.currentTime || 0) - (d.seekOffset || 10)));
-    H('seekforward', (d) => seekTo((a()?.currentTime || 0) + (d.seekOffset || 10)));
-    H('seekto', (d) => { if (d.seekTime != null) seekTo(d.seekTime); });
-    const prevCh = manifest.chapters[index - 1];
-    const nextCh = manifest.chapters[index + 1];
-    H('previoustrack', prevCh ? () => { window.location.hash = `#/${prevCh.id}`; } : null);
-    H('nexttrack', nextCh ? () => { window.location.hash = `#/${nextCh.id}`; } : null);
-    return () => {
-      ['play', 'pause', 'seekbackward', 'seekforward', 'seekto', 'previoustrack', 'nexttrack']
-        .forEach((n) => { try { ms.setActionHandler(n, null); } catch { /* noop */ } });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioSrc, meta.id, index]);
-
-  // body padding while the bar is visible
   const barVisible = Boolean(audioSrc) || dev;
   useEffect(() => {
     document.body.classList.toggle('has-player', barVisible);
     return () => document.body.classList.remove('has-player');
   }, [barVisible]);
 
-  // reveal blocks as the reader scrolls — replayable: leaving the viewport
-  // resets a block, so scrolling back up animates it again. The extended
-  // rootMargin keeps partially-visible blocks from flickering at the edges.
+  // reveal blocks as the reader scrolls — replayable, per page
   useEffect(() => {
     if (!doc) return;
     const ro = new IntersectionObserver((es) => {
       es.forEach((e) => e.target.classList.toggle('in', e.isIntersecting));
     }, { rootMargin: '12% 0px 12% 0px', threshold: 0 });
-    bodyEls().forEach((el) => ro.observe(el));
+    Array.from(bodyRef.current?.children || []).forEach((el) => ro.observe(el));
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc]);
+  }, [doc, page]);
 
-  // track reading position (throttled) — powers «ادامهٔ خواندن» and bookmarks
+  // track reading position (global block index via data-bi)
   useEffect(() => {
     if (!doc) return;
     let timer = 0;
     const save = () => {
-      const els = bodyEls();
+      const els = Array.from(bodyRef.current?.querySelectorAll('[data-bi]') || []);
       if (!els.length) return;
       const line = window.innerHeight * 0.2 + 60;
-      let bi = 0;
-      for (let i = 0; i < els.length; i++) {
-        if (els[i].getBoundingClientRect().bottom > line) { bi = i; break; }
+      let el = els[0];
+      for (const e of els) {
+        if (e.getBoundingClientRect().bottom > line) { el = e; break; }
       }
-      const snippet = (els[bi]?.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 55);
-      setPos({ chapterId: meta.id, block: bi, snippet, at: Date.now() });
+      const snippet = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 55);
+      setPos({ chapterId: meta.id, block: +el.dataset.bi, snippet, at: Date.now() });
     };
     const onScroll = () => {
       if (!timer) timer = setTimeout(() => { timer = 0; save(); }, 400);
@@ -245,26 +304,7 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => { window.removeEventListener('scroll', onScroll); if (timer) clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, meta.id]);
-
-  // anchor scrolling: sec-N (TOC sections), b-N (bookmarks), resume (saved position)
-  useEffect(() => {
-    if (!doc || !anchor) return;
-    let target = null;
-    if (anchor === 'resume') {
-      const pos = getPos();
-      if (pos && pos.chapterId === meta.id) target = bodyEls()[pos.block];
-    } else if (anchor.startsWith('b-')) {
-      target = bodyEls()[+anchor.slice(2)];
-    } else {
-      target = document.getElementById(anchor);
-    }
-    if (target) {
-      requestAnimationFrame(() =>
-        target.scrollIntoView({ behavior: 'auto', block: 'start' }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, anchor, meta.id]);
+  }, [doc, meta.id, page]);
 
   // ---- controls ----
   const fmt = (t) => {
@@ -306,7 +346,6 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
     if (audioRef.current) audioRef.current.playbackRate = RATES[next];
   };
   const onWordClick = (e) => {
-    // a drag-selection ends in a click; don't treat it as a seek
     if (!window.getSelection()?.isCollapsed) return;
     const s = e.target.closest('.w');
     if (!s || !hasSync) return;
@@ -349,26 +388,54 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
   if (missing) return <main><div className="notfound">این فصل یافت نشد.</div></main>;
   if (!doc) return <main><div className="loading">…</div></main>;
 
-  const prev = manifest.chapters[index - 1];
-  const next = manifest.chapters[index + 1];
+  const pg = doc.pagination;
+  const off = pg.off;
+  const paged = pageCount > 1;
+  const prevCh = manifest.chapters[index - 1];
+  const nextCh = manifest.chapters[index + 1];
+
+  // page-local footnotes, keeping their chapter-global numbers
+  const pageNotes = doc.footnotes
+    .map((f, i) => ({ ...f, n: i + 1 }))
+    .filter((f) => pg.blockPage[f.block] === page);
+
+  // nav targets
+  const prevNav = page > 1
+    ? { href: `#/${meta.id}${page - 1 > 1 ? `/p-${page - 1}` : ''}`,
+        label: pg.pages[page - 2].heading || 'آغاز فصل' }
+    : prevCh
+      ? { href: `#/${prevCh.id}${(pagesInfo?.[prevCh.id] || 1) > 1 ? `/p-${pagesInfo[prevCh.id]}` : ''}`,
+          label: prevCh.title }
+      : null;
+  const nextNav = page < pageCount
+    ? { href: `#/${meta.id}/p-${page + 1}`, label: pg.pages[page].heading || 'ادامه' }
+    : nextCh
+      ? { href: `#/${nextCh.id}`, label: nextCh.title }
+      : { href: '#/', label: 'بازگشت به فهرست', home: true };
 
   return (
     <main>
-      <div className="chapter-open">
-        {meta.kind === 'chapter' && (
-          <p className="chlabel">فصل {ORDINALS[chapterNo - 1] || faDigits(chapterNo)}</p>
-        )}
-        <div className="ornament" role="presentation"><span>٭</span></div>
-        <h1>{meta.title}</h1>
-      </div>
+      {page === 1 ? (
+        <div className="chapter-open">
+          {chLabel && <p className="chlabel">{chLabel}</p>}
+          <div className="ornament" role="presentation"><span>٭</span></div>
+          <h1>{meta.title}</h1>
+          {paged && <p className="pg-top">بخشِ {faDigits(page)} از {faDigits(pageCount)}</p>}
+        </div>
+      ) : (
+        <div className="chapter-open compact">
+          <p className="chlabel">{chLabel ? `${chLabel} ــ ` : ''}{meta.title}</p>
+          <p className="pg-top">بخشِ {faDigits(page)} از {faDigits(pageCount)}</p>
+        </div>
+      )}
 
       <div
         className={`chapter-body${hasSync ? ' has-sync' : ''}`}
         ref={bodyRef}
         onClick={onWordClick}
       >
-        {doc.epigraph && (
-          <div className="epigraph reveal">
+        {page === 1 && doc.epigraph && (
+          <div className="epigraph reveal" data-bi={0}>
             <div className="inner">
               {doc.epigraph.lines.map((items, k) => (
                 <div key={k}><Items items={items} /></div>
@@ -379,16 +446,18 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
         )}
 
         {doc.blocks.map((b, i) => {
-          if (b.type === 'p') return <p key={i} className="reveal"><Segs segs={b.segs} /></p>;
-          if (b.type === 'quote') return <blockquote key={i} className="reveal"><Segs segs={b.segs} /></blockquote>;
-          if (b.type === 'h2') return <h2 key={i} className="reveal" id={`sec-${b.sec}`}><Items items={b.items} /></h2>;
+          if (pg.blockPage[i] !== page) return null;
+          const bi = off + i;
+          if (b.type === 'p') return <p key={i} className="reveal" data-bi={bi}><Segs segs={b.segs} /></p>;
+          if (b.type === 'quote') return <blockquote key={i} className="reveal" data-bi={bi}><Segs segs={b.segs} /></blockquote>;
+          if (b.type === 'h2') return <h2 key={i} className="reveal" data-bi={bi} id={`sec-${b.sec}`}><Items items={b.items} /></h2>;
           if (b.type === 'divider') return (
-            <div key={i} className="ornament reveal" style={{ margin: '2.2rem auto' }}>
+            <div key={i} className="ornament reveal" data-bi={bi} style={{ margin: '2.2rem auto' }}>
               <span>٭&emsp;٭&emsp;٭</span>
             </div>
           );
           if (b.type === 'poem') return (
-            <div key={i} className="beyt-block reveal">
+            <div key={i} className="beyt-block reveal" data-bi={bi}>
               {b.beyts.map(([a, z], k) => (
                 <div className="beyt" key={k}>
                   <span className="mesra"><Items items={a} /></span>
@@ -401,10 +470,10 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
           return null;
         })}
 
-        {doc.footnotes.length > 0 && (
+        {pageNotes.length > 0 && (
           <ol className="footnotes reveal">
-            {doc.footnotes.map((f, i) => (
-              <li key={i} data-n={faDigits(i + 1)}>
+            {pageNotes.map((f) => (
+              <li key={f.n} data-n={faDigits(f.n)}>
                 {f.kind === 'latin' ? <span className="lr">{f.text}</span> : `${f.text} ــ م.`}
               </li>
             ))}
@@ -415,8 +484,13 @@ export default function Chapter({ manifest, index, anchor, setFolio }) {
       <QuoteCapture bodyRef={bodyRef} book={manifest.book} chapterTitle={meta.title} />
 
       <nav className="chapter-nav">
-        <span>{prev && <a href={`#/${prev.id}`}>→ {prev.title}</a>}</span>
-        <span>{next ? <a href={`#/${next.id}`}>{next.title} ←</a> : <a className="home-link" href="#/">بازگشت به فهرست</a>}</span>
+        <span>{prevNav && <a href={prevNav.href}>→ {prevNav.label}</a>}</span>
+        {paged && <span className="pg-ind">{faDigits(page)} / {faDigits(pageCount)}</span>}
+        <span>
+          <a className={nextNav.home ? 'home-link' : undefined} href={nextNav.href}>
+            {nextNav.label} {nextNav.home ? '' : '←'}
+          </a>
+        </span>
       </nav>
 
       {barVisible && (
