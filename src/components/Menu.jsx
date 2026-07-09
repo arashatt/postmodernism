@@ -48,6 +48,10 @@ export default function Menu({
     { v: 'sepia', label: 'کاهی' },
     { v: 'night', label: 'شب' },
   ];
+  const fonts = [
+    { v: 'amiri', label: 'امیری' },
+    { v: 'vazir', label: 'ساده' },
+  ];
 
   return (
     <div className={`menu-root${open ? ' open' : ''}`} aria-hidden={!open}>
@@ -170,6 +174,19 @@ export default function Menu({
                         onClick={() => onSettings({ theme: t.v })}
                         aria-pressed={settings.theme === t.v}>
                         {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="set-row">
+                  <span className="set-label">قلم</span>
+                  <div className="seg" role="group" aria-label="قلم">
+                    {fonts.map((f) => (
+                      <button key={f.v}
+                        className={`seg-b${(settings.font || 'amiri') === f.v ? ' on' : ''}`}
+                        onClick={() => onSettings({ font: f.v })}
+                        aria-pressed={(settings.font || 'amiri') === f.v}>
+                        {f.label}
                       </button>
                     ))}
                   </div>

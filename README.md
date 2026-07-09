@@ -148,6 +148,9 @@ The ☰ drawer now includes:
   - **حال‌وهوا** — three themes: روز (day), کاهی (sepia), شب (night). All
     are pure token swaps; the whole site — hairlines, accents, selection,
     the mobile status-bar color — recolors together.
+  - **قلم** — امیری (the literary Naskh) or ساده (Vazirmatn, a plain
+    modern face) for all Persian text. Latin terms stay EB Garamond, and
+    quote-card images keep Amiri for the book idiom.
 
 Both settings persist in `localStorage` and re-apply on load (Safari
 private mode degrades gracefully). Themes only ever use flat ink-on-paper
@@ -202,10 +205,18 @@ and metadata are solid, ±10 s appears on recent iOS.
 
 ## Pagination (بخش‌بندی فصل‌ها)
 
-Chapters are automatically paginated: **every `##` heading starts a new
-page**, and the content before the first heading (with the epigraph) is
-page 1. A chapter with no headings stays a single page — nothing to
-configure.
+Chapters are automatically paginated by two combined rules:
+
+1. **Every `##` heading starts a new page**; content before the first
+   heading (with the epigraph) is page 1.
+2. **A word budget** (default 600 words) subdivides any long stretch at
+   paragraph boundaries — so long chapters **without any headings** still
+   paginate, and an oversized single section splits into continuation
+   pages labeled «بخش ــ ادامه». A split is skipped when the remainder is
+   small, so no page ends as a tiny fragment.
+
+Tune the budget in the manifest's `book` object: `"pageWords": 450` for
+shorter pages, larger for longer. Short chapters stay single-page.
 
 Routes: `#/fasl-1` is page 1, `#/fasl-1/p-2` is page 2, and the back
 button walks pages. The nav at the page foot shows the previous/next
@@ -222,6 +233,22 @@ belong to, keeping their chapter-global numbering.
 
 With a voiceover playing, the read-along **flips pages automatically** as
 narration crosses a section boundary — audio remains one file per chapter.
+
+## Keyboard, listening, and reading comforts
+
+- **Arrow keys** page through the book in reading order — ← advances,
+  → goes back — crossing chapter boundaries like the foot links. Ignored
+  while typing, over the seek bar, or with the menu open.
+- **Continuous listening**: when a chapter's narration ends, the site
+  moves to the next chapter and resumes playback automatically once its
+  audio loads. Within-chapter page flips never interrupt audio. (If a
+  browser blocks the cross-chapter autoplay, one tap on ▶ resumes.)
+- **Footnote popovers**: hover a footnote number to read the note in
+  place (tap toggles it on touch); the per-page footnote list at the
+  page foot remains for print parity.
+- **Wide displays** get a longer measure and slightly larger type
+  (42rem at ≥1100px, 46rem at ≥1500px) — more text on screen while
+  keeping a book-like line length.
 
 ## واژه‌نامه (auto-glossary)
 

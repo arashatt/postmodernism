@@ -29,7 +29,7 @@ export function removeMark(id) {
 }
 
 const K_SET = 'ketab:settings';
-const DEFAULTS = { fontScale: 1, theme: 'day' };
+const DEFAULTS = { fontScale: 1, theme: 'day', font: 'amiri' };
 
 export function getSettings() {
   try { return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(K_SET)) || {}) }; }

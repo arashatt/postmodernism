@@ -175,31 +175,72 @@ export function blockTexts(parsed) {
 }
 
 // ---------------------------------------------------------------------------
-// Pagination: every «##» heading starts a new page; content before the first
-// heading (plus the epigraph) is page 1. A chapter with no headings is a
-// single page. Block indices ("bi") follow the same convention as blockTexts:
-// bi 0 = epigraph (when present), then parsed.blocks shifted by that offset —
-// the convention bookmarks, search, and the glossary all share.
-export function paginate(parsed) {
+// Pagination. Two mechanisms combine:
+//   1. Every «##» heading starts a new page (content before the first
+//      heading, plus the epigraph, is page 1).
+//   2. A word budget (default 600, manifest book.pageWords) subdivides any
+//      long stretch — so chapters WITHOUT headings still paginate, splitting
+//      at block boundaries. A split is skipped when the remainder of the
+//      section is small, so no page ends as a tiny orphan fragment.
+// Block indices ("bi") share the blockTexts convention: bi 0 = epigraph
+// (when present), then parsed.blocks shifted by that offset.
+export function paginate(parsed, maxWords = 600) {
+  const MIN_TAIL = Math.max(120, Math.floor(maxWords * 0.3));
   const off = parsed.epigraph ? 1 : 0;
-  const blockPage = [];          // page of parsed.blocks[i]
-  const pages = [{ heading: null }];
-  const headingPage = [];        // page of the k-th h2 (for sec-K links)
-  let page = 1;
-  parsed.blocks.forEach((b, i) => {
-    if (b.type === 'h2') {
-      if (i > 0) { page += 1; pages.push({ heading: b.text }); }
-      else pages[0].heading = b.text;
-      headingPage.push(page);
-    }
-    blockPage.push(page);
+  const wc = (t) => t.split(/\s+/).map(normalize).filter(Boolean).length;
+  const blockWords = parsed.blocks.map((b) => {
+    if (b.type === 'p' || b.type === 'quote')
+      return wc(b.segs.filter((x) => x.t === 'text').map((x) => x.text).join(' '));
+    if (b.type === 'h2') return wc(b.text);
+    if (b.type === 'poem') return wc(b.beyts.map(([a, z]) => `${a} ${z}`).join(' '));
+    return 0;
   });
+  const epiWords = parsed.epigraph ? wc(parsed.epigraph.lines.join(' ')) : 0;
+
+  // words remaining from block i to the end of its section (next h2)
+  const n = parsed.blocks.length;
+  const restOfSection = new Array(n).fill(0);
+  for (let i = n - 1; i >= 0; i--) {
+    const next = i + 1 < n && parsed.blocks[i + 1].type === 'h2' ? 0 : (restOfSection[i + 1] || 0);
+    restOfSection[i] = blockWords[i] + next;
+  }
+
+  const blockPage = new Array(n).fill(1);
+  const pages = [];          // { heading, section, cont }
+  const headingPage = [];
+  let page = 0;
+  let budget = 0;
+  let section = null;
+  const openPage = (heading, cont = false) => {
+    page += 1;
+    pages.push({ heading, section, cont });
+    budget = 0;
+  };
+
+  parsed.blocks.forEach((b, i) => {
+    const isH2 = b.type === 'h2';
+    if (isH2) section = b.text;
+    if (i === 0) {
+      openPage(isH2 ? b.text : null);
+      budget = epiWords;                       // epigraph rides page 1
+    } else if (isH2) {
+      openPage(b.text);
+    } else if (budget > 0 && budget + blockWords[i] > maxWords
+               && restOfSection[i] >= MIN_TAIL) {
+      openPage(null, true);                    // length-based sub-page
+    }
+    if (isH2) headingPage.push(page);
+    blockPage[i] = page;
+    budget += blockWords[i];
+  });
+  if (page === 0) openPage(null);              // empty-chapter safety
+
   const count = page;
   const pageOfBi = (bi) => {
     if (off && bi === 0) return 1;
     const i = bi - off;
     if (i < 0) return 1;
-    if (i >= blockPage.length) return count;
+    if (i >= n) return count;
     return blockPage[i];
   };
   return { count, pages, blockPage, headingPage, off, pageOfBi };

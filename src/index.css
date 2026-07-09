@@ -7,10 +7,14 @@
   --unread:#bcbcbc;
   --accent:#111111;
   --measure:36rem;
+  --fa-font:'Amiri',serif;
   --playerbar:4.2rem;
   --fontscale:1;
   --body:calc(1.22rem * var(--fontscale));
   --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 30px rgba(0,0,0,.06);
+}
+:root[data-font="vazir"]{
+  --fa-font:'Vazirmatn','Amiri',sans-serif;
 }
 :root[data-theme="night"]{
   --ink:#e9e7e2;
@@ -42,7 +46,7 @@ button,a,.track{touch-action:manipulation}
 body{
   background:var(--paper);
   color:var(--ink);
-  font-family:'Amiri',serif;
+  font-family:var(--fa-font);
   font-size:var(--body);
   line-height:2.05;
   -webkit-font-smoothing:antialiased;
@@ -366,7 +370,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 
 /* ---------- small screens ---------- */
 @media (max-width:480px){
-  body{font-size:1.13rem}
+  :root{--body:calc(1.13rem * var(--fontscale))}
   main{padding:0 1.15rem}
   .runhead{padding-inline:.7rem;grid-template-columns:minmax(5.2rem,1fr) auto minmax(5.2rem,1fr)}
   .runhead .rh-title{font-size:.92rem}
@@ -383,7 +387,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
   content:attr(data-tip);
   position:absolute;top:calc(100% + .6rem);
   background:var(--ink);color:var(--paper);
-  font-family:'Amiri',serif;font-size:.82rem;font-weight:400;line-height:1.9;
+  font-family:var(--fa-font);font-size:.82rem;font-weight:400;line-height:1.9;
   padding:.5rem .85rem;width:max-content;max-width:14.5rem;white-space:normal;
   opacity:0;visibility:hidden;pointer-events:none;z-index:40;
   transition:opacity .3s ease, visibility 0s linear .3s;
@@ -426,7 +430,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 /* ---------- نقل: quote cards ---------- */
 .quote-fab{
   position:fixed;z-index:35;transform:translateX(-50%);
-  font-family:'Amiri',serif;font-size:.95rem;
+  font-family:var(--fa-font);font-size:.95rem;
   background:var(--ink);color:var(--paper);border:1px solid var(--ink);
   border-radius:999px;padding:.3rem 1.1rem;cursor:pointer;
   min-height:2.2rem;
@@ -454,7 +458,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .search-ic{color:var(--quiet);flex:0 0 auto}
 .search-input{
   flex:1;min-width:0;border:none;background:none;outline:none;
-  font-family:'Amiri',serif;font-size:1rem;color:var(--ink);
+  font-family:var(--fa-font);font-size:1rem;color:var(--ink);
 }
 .search-input::placeholder{color:var(--quiet)}
 .search-clear{
@@ -494,7 +498,7 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
   overflow:hidden;background:color-mix(in srgb,var(--ink) 3%,transparent);
 }
 .seg-b{
-  font-family:'Amiri',serif;border:none;background:none;cursor:pointer;
+  font-family:var(--fa-font);border:none;background:none;cursor:pointer;
   color:var(--quiet);padding:.35rem .85rem;min-width:2.6rem;min-height:2.2rem;
   line-height:1;transition:background .2s ease,color .2s ease;
 }
@@ -559,4 +563,35 @@ main,blockquote,.footnotes,.colophon,.gloss-row,.chapter-body h2{
 .pg-ind{
   color:var(--quiet);font-size:.92rem;font-variant-numeric:tabular-nums;
   align-self:center;
+}
+
+/* ---------- wide displays: longer measure, slightly larger type ---------- */
+@media (min-width:1100px){
+  :root{
+    --measure:42rem;
+    --body:calc(1.28rem * var(--fontscale));
+  }
+}
+@media (min-width:1500px){
+  :root{
+    --measure:46rem;
+    --body:calc(1.32rem * var(--fontscale));
+  }
+}
+
+/* ---------- footnote popovers ---------- */
+.noteref{cursor:pointer;padding-inline:.12em}
+.note-pop{
+  position:fixed;z-index:60;transform:translateX(-50%);
+  background:var(--paper);color:var(--ink);
+  border:1px solid var(--hairline);border-radius:10px;
+  box-shadow:var(--shadow);
+  padding:.5rem .9rem;max-width:min(19rem,86vw);
+  font-size:.95rem;line-height:1.9;text-align:right;
+  animation:notepop .16s ease both;
+}
+.note-pop .lr{font-size:.96em}
+@keyframes notepop{
+  from{opacity:0;transform:translateX(-50%) translateY(5px)}
+  to{opacity:1;transform:translateX(-50%) translateY(0)}
 }

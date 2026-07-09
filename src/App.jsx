@@ -64,6 +64,11 @@ export default function App() {
     } else {
       delete document.documentElement.dataset.theme;
     }
+    if (settings.font && settings.font !== 'amiri') {
+      document.documentElement.dataset.font = settings.font;
+    } else {
+      delete document.documentElement.dataset.font;
+    }
     document.documentElement.style.setProperty('--fontscale', settings.fontScale);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = settings.theme === 'night' ? '#121212'
@@ -94,7 +99,7 @@ export default function App() {
             return {
               id: c.id,
               headings: p.blocks.filter((b) => b.type === 'h2').map((b) => b.text),
-              pages: paginate(p).count,
+              pages: paginate(p, manifest.book.pageWords || 600).count,
               terms: p.footnotes
                 .filter((f) => f.kind === 'latin' && f.term)   // «term»[[gloss]] only; bare [[…]] are citations
                 .map((f) => ({ latin: f.text, term: f.term, block: f.block + off, chapterId: c.id })),

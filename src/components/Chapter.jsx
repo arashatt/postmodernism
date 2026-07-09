@@ -5,14 +5,30 @@ import { getPos, setPos } from '../lib/store.js';
 import QuoteCapture from './QuoteCard.jsx';
 
 const RATES = [1, 1.25, 1.5, 0.75];
+
+// Module-scope renderers: defining these inside the component would create
+// new component types every render, remounting every word span — wiping
+// read-along classes mid-playback and detaching footnote markers mid-tap.
+const W = ({ item, els }) =>
+  item.sp !== undefined ? item.sp : (
+    <span className="w" data-wi={item.i}
+          ref={(el) => { els.current[item.i] = el; }}>{item.w}</span>
+  );
+const Items = ({ items, els }) => items.map((it, k) => <W key={k} item={it} els={els} />);
+const Segs = ({ segs, els }) =>
+  segs.map((s, k) =>
+    s.t === 'ref'
+      ? <sup className="noteref" key={k} data-n={s.n}>{faDigits(s.n)}</sup>
+      : <Items key={k} items={s.items} els={els} />
+  );
 const reduceMotion = () =>
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Tokenize parsed BookML into a render plan + normalized word list.
 // Every readable word gets a global index shared with the aligner, and a
 // page number so the read-along can flip pages as narration advances.
-function tokenize(parsed) {
-  const pagination = paginate(parsed);
+function tokenize(parsed, maxWords) {
+  const pagination = paginate(parsed, maxWords);
   const norms = [];
   const wordPage = [];
   let curPage = 1;
@@ -58,6 +74,7 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
   const [rateIdx, setRateIdx] = useState(0);
   const [prog, setProg] = useState({ t: 0, d: 0 });
   const [hint, setHint] = useState('');
+  const [note, setNote] = useState(null);   // {n, x, y} footnote popover
 
   const audioRef = useRef(null);
   const bodyRef = useRef(null);
@@ -70,6 +87,8 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
   const pageRef = useRef(1);
   const flipRef = useRef(0);
   const pendingBiRef = useRef(null);
+  const navRef = useRef({});
+  const wantAutoplayRef = useRef(false);
 
   const chapterNo = manifest.chapters
     .slice(0, index + 1)
@@ -78,6 +97,26 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
     ? `فصل ${ORDINALS[chapterNo - 1] || faDigits(chapterNo)}` : null;
 
   useEffect(() => { setFolio(ABJAD[index] || faDigits(index + 1)); }, [index, setFolio]);
+
+  // arrow-key paging — RTL reading order: ← advances, → goes back
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const t = e.target;
+      if (t.closest?.('input,textarea,select,[contenteditable],.track')) return;
+      if (document.querySelector('.menu-root.open, .quote-modal')) return;
+      const { prev, next } = navRef.current;
+      if (e.key === 'ArrowLeft' && next && !next.home) {
+        e.preventDefault();
+        window.location.hash = next.href;
+      } else if (e.key === 'ArrowRight' && prev) {
+        e.preventDefault();
+        window.location.hash = prev.href;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   useEffect(() => { pageRef.current = page; }, [page]);
 
   // ---- chapter text ----
@@ -88,7 +127,11 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
       .catch(() => setMissing(true));
   }, [meta.file]);
 
-  const doc = useMemo(() => (text ? tokenize(parseBookML(text)) : null), [text]);
+  const maxWords = manifest.book.pageWords || 600;
+  const doc = useMemo(
+    () => (text ? tokenize(parseBookML(text), maxWords) : null),
+    [text, maxWords]
+  );
   const pageCount = doc ? doc.pagination.count : 1;
 
   // ---- route anchor -> page (+ optional scroll target) ----
@@ -137,6 +180,14 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
   // ---- audio + cues detection (convention: audio/<id>.mp3 + .srt) ----
   useEffect(() => {
     let live = true;
+    // continuous listening: the previous chapter's audio just ended and
+    // navigated here — resume playback as soon as this chapter's audio loads
+    try {
+      if (sessionStorage.getItem('ketab:autoplay') === '1') {
+        sessionStorage.removeItem('ketab:autoplay');
+        wantAutoplayRef.current = true;
+      }
+    } catch { /* private mode */ }
     const audioCandidates = meta.audio ? [meta.audio] : [`audio/${meta.id}.mp3`, `audio/${meta.id}.m4a`, `audio/${meta.id}.ogg`];
     const cueCandidates = meta.cues ? [meta.cues] : [`audio/${meta.id}.srt`, `audio/${meta.id}.vtt`];
     (async () => {
@@ -271,6 +322,24 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
     return () => document.body.classList.remove('has-player');
   }, [barVisible]);
 
+  // footnote popover dismissal
+  useEffect(() => {
+    if (!note) return;
+    const hide = () => setNote(null);
+    const onDocClick = (e) => {
+      if (!e.target.closest('.noteref') && !e.target.closest('.note-pop')) hide();
+    };
+    const onEsc = (e) => { if (e.key === 'Escape') hide(); };
+    window.addEventListener('scroll', hide, { passive: true });
+    document.addEventListener('click', onDocClick);
+    window.addEventListener('keydown', onEsc);
+    return () => {
+      window.removeEventListener('scroll', hide);
+      document.removeEventListener('click', onDocClick);
+      window.removeEventListener('keydown', onEsc);
+    };
+  }, [note]);
+
   // reveal blocks as the reader scrolls — replayable, per page
   useEffect(() => {
     if (!doc) return;
@@ -345,7 +414,30 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
     setRateIdx(next);
     if (audioRef.current) audioRef.current.playbackRate = RATES[next];
   };
+  const noteAt = (sup) => {
+    const r = sup.getBoundingClientRect();
+    return {
+      n: +sup.dataset.n,
+      x: Math.min(Math.max(r.left + r.width / 2, 16), window.innerWidth - 16),
+      y: r.top,
+    };
+  };
+  const onBodyOver = (e) => {
+    if (!window.matchMedia('(hover: hover)').matches) return;  // touch: tap owns it
+    const sup = e.target.closest?.('.noteref');
+    if (sup && sup.dataset.n && note?.n !== +sup.dataset.n) setNote(noteAt(sup));
+  };
   const onWordClick = (e) => {
+    const sup = e.target.closest('.noteref');
+    if (sup && sup.dataset.n) {
+      e.preventDefault();
+      if (window.matchMedia('(hover: hover)').matches) {
+        setNote(noteAt(sup));          // hover already showed it; click keeps it
+      } else {
+        setNote((cur) => (cur && cur.n === +sup.dataset.n ? null : noteAt(sup)));
+      }
+      return;
+    }
     if (!window.getSelection()?.isCollapsed) return;
     const s = e.target.closest('.w');
     if (!s || !hasSync) return;
@@ -371,20 +463,6 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
     r.readAsText(f);
   };
 
-  // ---- rendering helpers ----
-  const W = ({ item }) =>
-    item.sp !== undefined ? item.sp : (
-      <span className="w" data-wi={item.i}
-            ref={(el) => { wordEls.current[item.i] = el; }}>{item.w}</span>
-    );
-  const Items = ({ items }) => items.map((it, k) => <W key={k} item={it} />);
-  const Segs = ({ segs }) =>
-    segs.map((s, k) =>
-      s.t === 'ref'
-        ? <sup className="noteref" key={k}>{faDigits(s.n)}</sup>
-        : <Items key={k} items={s.items} />
-    );
-
   if (missing) return <main><div className="notfound">این فصل یافت نشد.</div></main>;
   if (!doc) return <main><div className="loading">…</div></main>;
 
@@ -399,19 +477,27 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
     .map((f, i) => ({ ...f, n: i + 1 }))
     .filter((f) => pg.blockPage[f.block] === page);
 
-  // nav targets
+  // nav targets — continuation pages carry their section's name
+  const pageLabel = (p) => {
+    const info = pg.pages[p - 1];
+    if (!info) return '';
+    if (info.heading) return info.heading;
+    if (info.cont) return info.section ? `${info.section} ــ ادامه` : 'ادامه';
+    return p === 1 ? 'آغاز فصل' : 'ادامه';
+  };
   const prevNav = page > 1
-    ? { href: `#/${meta.id}${page - 1 > 1 ? `/p-${page - 1}` : ''}`,
-        label: pg.pages[page - 2].heading || 'آغاز فصل' }
+    ? { href: `#/${meta.id}${page - 1 > 1 ? `/p-${page - 1}` : ''}`, label: pageLabel(page - 1) }
     : prevCh
       ? { href: `#/${prevCh.id}${(pagesInfo?.[prevCh.id] || 1) > 1 ? `/p-${pagesInfo[prevCh.id]}` : ''}`,
           label: prevCh.title }
       : null;
   const nextNav = page < pageCount
-    ? { href: `#/${meta.id}/p-${page + 1}`, label: pg.pages[page].heading || 'ادامه' }
+    ? { href: `#/${meta.id}/p-${page + 1}`, label: pageLabel(page + 1) }
     : nextCh
       ? { href: `#/${nextCh.id}`, label: nextCh.title }
       : { href: '#/', label: 'بازگشت به فهرست', home: true };
+
+  navRef.current = { prev: prevNav, next: nextNav };
 
   return (
     <main>
@@ -433,12 +519,13 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
         className={`chapter-body${hasSync ? ' has-sync' : ''}`}
         ref={bodyRef}
         onClick={onWordClick}
+        onMouseOver={onBodyOver}
       >
         {page === 1 && doc.epigraph && (
           <div className="epigraph reveal" data-bi={0}>
             <div className="inner">
               {doc.epigraph.lines.map((items, k) => (
-                <div key={k}><Items items={items} /></div>
+                <div key={k}><Items items={items} els={wordEls} /></div>
               ))}
               {doc.epigraph.source && <div className="src">ــ {doc.epigraph.source}</div>}
             </div>
@@ -448,9 +535,9 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
         {doc.blocks.map((b, i) => {
           if (pg.blockPage[i] !== page) return null;
           const bi = off + i;
-          if (b.type === 'p') return <p key={i} className="reveal" data-bi={bi}><Segs segs={b.segs} /></p>;
-          if (b.type === 'quote') return <blockquote key={i} className="reveal" data-bi={bi}><Segs segs={b.segs} /></blockquote>;
-          if (b.type === 'h2') return <h2 key={i} className="reveal" data-bi={bi} id={`sec-${b.sec}`}><Items items={b.items} /></h2>;
+          if (b.type === 'p') return <p key={i} className="reveal" data-bi={bi}><Segs segs={b.segs} els={wordEls} /></p>;
+          if (b.type === 'quote') return <blockquote key={i} className="reveal" data-bi={bi}><Segs segs={b.segs} els={wordEls} /></blockquote>;
+          if (b.type === 'h2') return <h2 key={i} className="reveal" data-bi={bi} id={`sec-${b.sec}`}><Items items={b.items} els={wordEls} /></h2>;
           if (b.type === 'divider') return (
             <div key={i} className="ornament reveal" data-bi={bi} style={{ margin: '2.2rem auto' }}>
               <span>٭&emsp;٭&emsp;٭</span>
@@ -460,8 +547,8 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
             <div key={i} className="beyt-block reveal" data-bi={bi}>
               {b.beyts.map(([a, z], k) => (
                 <div className="beyt" key={k}>
-                  <span className="mesra"><Items items={a} /></span>
-                  <span className="mesra"><Items items={z} /></span>
+                  <span className="mesra"><Items items={a} els={wordEls} /></span>
+                  <span className="mesra"><Items items={z} els={wordEls} /></span>
                 </div>
               ))}
               {b.poet && <p className="poet">ــ {b.poet}</p>}
@@ -480,6 +567,18 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
           </ol>
         )}
       </div>
+
+      {note && doc.footnotes[note.n - 1] && (
+        <div
+          className="note-pop"
+          role="tooltip"
+          style={{ left: note.x, bottom: window.innerHeight - note.y + 8 }}
+        >
+          {doc.footnotes[note.n - 1].kind === 'latin'
+            ? <span className="lr">{doc.footnotes[note.n - 1].text}</span>
+            : `${doc.footnotes[note.n - 1].text} ــ م.`}
+        </div>
+      )}
 
       <QuoteCapture bodyRef={bodyRef} book={manifest.book} chapterTitle={meta.title} />
 
@@ -537,8 +636,21 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
               setPlaying(false);
               try { navigator.mediaSession.playbackState = 'paused'; } catch { /* noop */ }
             }}
-            onEnded={() => setPlaying(false)}
-            onLoadedMetadata={(e) => setProg({ t: 0, d: e.target.duration || 0 })}
+            onEnded={() => {
+              setPlaying(false);
+              const nx = manifest.chapters[index + 1];
+              if (nx) {
+                try { sessionStorage.setItem('ketab:autoplay', '1'); } catch { /* noop */ }
+                window.location.hash = `#/${nx.id}`;
+              }
+            }}
+            onLoadedMetadata={(e) => {
+              setProg({ t: 0, d: e.target.duration || 0 });
+              if (wantAutoplayRef.current) {
+                wantAutoplayRef.current = false;
+                e.target.play().catch(() => { /* autoplay blocked by browser */ });
+              }
+            }}
           />
         </div>
       )}
