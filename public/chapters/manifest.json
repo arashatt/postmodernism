@@ -14,7 +14,7 @@
     "format": "وزیری، ۲۴۰ صفحه",
     "about": "chapters/about.md",
     "orderUrl": "",
-    "pageWords": 2000,
+    "pageWords": 2000
   },
   "chapters": [
     { "id": "pishgoftar", "title": "پیشگفتار مترجم", "kind": "front", "file": "chapters/pishgoftar.md" },
