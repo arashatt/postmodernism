@@ -53,7 +53,7 @@ body{
   transition:background-color .35s ease, color .35s ease;
 }
 body.has-player{padding-bottom:calc(var(--playerbar) + env(safe-area-inset-bottom, 0px))}
-.lr{direction:ltr;unicode-bidi:isolate;font-family:'EB Garamond',serif;font-style:italic;font-size:.92em}
+.lr{direction:ltr;unicode-bidi:isolate;font-family:'Georgia',serif;font-style:italic;font-size:1em}
 
 /* ---------- running head ---------- */
 .runhead{
