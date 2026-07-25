@@ -18,7 +18,7 @@
   },
   "chapters": [
     { "id": "pishgoftar", "title": "پیشگفتار مترجم", "kind": "front", "file": "chapters/pishgoftar.md" },
-    { "id": "fasl-1", "title": "نوشتار و تجربهٔ بیرون", "kind": "chapter", "file": "chapters/fasl-1.md" },
-    { "id": "fasl-2", "title":"از دست رفتن اصل و منشا", "kind": "chapter", "file": "chapters/fasl-2.md" }
+    { "id": "postmodernism", "title": "پست‌مدرنیسم برخی رهنمون‌ها", "kind": "chapter", "file": "chapters/fasl-1.md" },
+    { "id": "the-loss-of-origin", "title":"از دست رفتن اصل و منشا", "kind": "chapter", "file": "chapters/fasl-2.md" }
   ]
 }
