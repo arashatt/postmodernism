@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseBookML, paginate, normalize, faDigits, ORDINALS, ABJAD } from '../lib/bookml.js';
 import { parseCues, cueWords, align } from '../lib/readalong.js';
 import { getPos, setPos } from '../lib/store.js';
+import { bindSwipeNav, damp } from '../lib/swipe.js';
 import QuoteCapture from './QuoteCard.jsx';
 
 const RATES = [1, 1.25, 1.5, 0.75];
@@ -77,6 +78,7 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
   const [note, setNote] = useState(null);   // {n, x, y} footnote popover
 
   const audioRef = useRef(null);
+  const mainRef = useRef(null);
   const bodyRef = useRef(null);
   const wordEls = useRef([]);
   const timesRef = useRef(null);
@@ -172,6 +174,50 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
     requestAnimationFrame(() => paint());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, page]);
+
+  // swipe paging — the same two targets the arrow keys use. Only the leaf
+  // itself moves: the player bar and footnote popovers are fixed and live
+  // inside <main>, so transforming <main> would drag them along. Bound on
+  // `doc` because the first render is the loading stub, which carries no ref.
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return undefined;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const leaf = () => main.querySelectorAll('.chapter-open, .chapter-body');
+    const paint = (x, ms, opacity = '') => leaf().forEach((el) => {
+      el.style.transition = ms ? `transform ${ms}ms ease-out, opacity ${ms}ms ease-out` : 'none';
+      el.style.transform = x ? `translateX(${x}px)` : '';
+      el.style.opacity = opacity;
+    });
+    const turn = (nav, dir) => {
+      if (!nav) return false;
+      if (reduced) { window.location.hash = nav.href; return true; }
+      paint(dir * 110, 150, '0');
+      setTimeout(() => { window.location.hash = nav.href; }, 150);
+      return true;
+    };
+    return bindSwipeNav(main, {
+      blocked: () =>
+        !!document.querySelector('.menu-root.open, .quote-modal') ||
+        !!window.getSelection()?.toString().trim(),
+      onDrag: (dx) => { if (!reduced) paint(damp(dx), 0); },
+      onSettle: () => paint(0, 200),
+      onNext: () => {
+        const { next } = navRef.current;
+        return next && !next.home ? turn(next, 1) : false;
+      },
+      onPrev: () => turn(navRef.current.prev, -1),
+    });
+  }, [doc]);
+
+  // a turned page starts flat again (same DOM when paging within a chapter)
+  useEffect(() => {
+    mainRef.current?.querySelectorAll('.chapter-open, .chapter-body').forEach((el) => {
+      el.style.transition = 'none';
+      el.style.transform = '';
+      el.style.opacity = '';
+    });
+  }, [page]);
 
   const gotoPage = (p) => {
     window.location.hash = `#/${meta.id}${p > 1 ? `/p-${p}` : ''}`;
@@ -500,7 +546,7 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
   navRef.current = { prev: prevNav, next: nextNav };
 
   return (
-    <main>
+    <main ref={mainRef}>
       {page === 1 ? (
         <div className="chapter-open">
           {chLabel && <p className="chlabel">{chLabel}</p>}
