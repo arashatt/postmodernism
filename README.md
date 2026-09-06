@@ -13,7 +13,9 @@ book-site/
 │   │   ├── pishgoftar.md
 │   │   ├── fasl-1.md
 │   │   └── fasl-2.md
-│   └── audio/             ← voiceover files (see below)
+│   ├── audio/             ← voiceover files (see below)
+│   ├── icons/             ← app icons (see «نصب روی گوشی»)
+│   └── manifest.webmanifest  ← the installable-app entry
 ├── src/                   ← app code; you should not need to touch it
 └── dist/                  ← the built site (after `npm run build`)
 ```
@@ -186,8 +188,66 @@ tap (satisfies mobile autoplay policies); fonts load with `display=swap`
 so text renders before Amiri arrives.
 
 Worth a quick on-device pass after deploy: play/pause and seek on iOS
-Safari, word-tap seeking accuracy, and the drawer over the notch in
-landscape.
+Safari, word-tap seeking accuracy, the drawer over the notch in landscape,
+and — once installed to the home screen — the status bar in روز/شب (see
+«نصب روی گوشی» below).
+
+## نصب روی گوشی (PWA)
+
+The site installs as an app on Android and iPhone: home-screen icon, no
+browser chrome, and the whole book readable with no connection.
+
+**Android / Chrome** — the ☰ drawer shows a «نصب برنامه» button as soon as
+the browser offers installation (the standard mini-infobar is suppressed so
+the invitation sits inside the book instead).
+**iPhone / Safari** — iOS has no install prompt, so the same place in the
+drawer spells out the two steps: هم‌رسانی ⬆︎ ← «افزودن به صفحهٔ اصلی».
+Once installed, both hints disappear.
+
+Requires HTTPS (or `localhost`); over plain `http:` everything still works,
+just without installation or offline.
+
+### What is cached
+
+`src/sw.js` is the service worker; `vite build` writes it to `dist/sw.js`
+with the hashed asset names baked in. It keeps two caches:
+
+| | strategy | notes |
+|---|---|---|
+| app shell (`index.html`, `assets/…`, icons, cover) | precache, cache-first | replaced as a set on each release |
+| `chapters/…` (manifest, chapter files, about) | stale-while-revalidate | the **whole book is pulled in on the first visit**, so a reader who opened the home page once can read every chapter offline |
+| Google Fonts | cache-first | Amiri/Vazirmatn/EB Garamond survive offline |
+| `audio/…` | **never touched** | recordings are streamed with range requests and are far too large to cache; the player and read-along need a connection |
+
+Editing content on the server still needs no rebuild. A reader whose cache
+already holds a chapter sees the edited text on their **next** visit — the
+worker serves the cached copy and refreshes it in the background.
+
+### Releases and the «به‌روزرسانی» pill
+
+The worker's version is a digest of the build output, so a rebuild that
+changes nothing ships a byte-identical worker and no one is nagged. When a
+release does change something, readers already on the site get a small pill
+at the foot of the page — «نسخهٔ تازهٔ کتاب آماده است» — and nothing reloads
+until they tap it. Readers who come back later simply get the new version.
+
+### Icons and the app name
+
+`public/icons/icon.svg` (framed ★, also the browser favicon) and
+`public/icons/maskable.svg` (the same star inside a circle, for Android's
+mask and the iOS home screen) are the sources; the PNGs beside them are
+rasterized copies at 192, 512 and 180 px. Replace all of them together if
+you change the mark, keeping the file names.
+
+The home-screen name, colours and description live in
+`public/manifest.webmanifest` (`name`, `short_name`, `theme_color`,
+`description`) plus the `apple-mobile-web-app-title` meta in `index.html`.
+Like the chapters, that file can be edited on the server — no rebuild.
+iOS shows no custom splash screen; it fades from `background_color`.
+
+`npm run dev` never registers a worker, and unregisters one left behind by a
+production build served from the same origin, so development is never served
+stale files.
 
 ## Lock-screen / notification playback
 
