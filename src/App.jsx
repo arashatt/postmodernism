@@ -3,6 +3,7 @@ import Home from './components/Home.jsx';
 import Chapter from './components/Chapter.jsx';
 import Menu from './components/Menu.jsx';
 import Glossary from './components/Glossary.jsx';
+import UpdateBar from './components/UpdateBar.jsx';
 import { parseBookML } from './lib/bookml.js';
 import { getPos, getMarks, addMark, removeMark, getSettings, setSettings } from './lib/store.js';
 import { blockTexts, paginate } from './lib/bookml.js';
@@ -177,6 +178,7 @@ export default function App() {
       ) : (
         <Home manifest={manifest} headings={headings} setFolio={setFolio} pos={getPos()} hasGlossary={terms.length > 0} />
       )}
+      <UpdateBar />
       <footer>
         <div className="ornament" role="presentation"><span>٭</span></div>
         <p>{manifest.book.publisher} ــ {manifest.book.city}، {manifest.book.year}</p>
