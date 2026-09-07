@@ -178,7 +178,7 @@ values, keeping the black-and-white character intact even in sepia/night.
 
 ## Mobile notes (iOS / Android)
 
-Applied in code: `viewport-fit=cover` + safe-area insets on the header,
+Applied in code: swipe paging (see below), `viewport-fit=cover` + safe-area insets on the header,
 player bar, and drawer (notch / home-indicator devices); `100vh` fallback
 before `svh` for iOS < 15.4; ≥ 44 px tap targets on all controls;
 `touch-action: manipulation` (no double-tap-zoom delay on player buttons);
@@ -299,6 +299,14 @@ narration crosses a section boundary — audio remains one file per chapter.
 - **Arrow keys** page through the book in reading order — ← advances,
   → goes back — crossing chapter boundaries like the foot links. Ignored
   while typing, over the seek bar, or with the menu open.
+- **Swipe** does the same on a touch screen: drag the page to the right to
+  advance, to the left to go back — the motion of turning the left-hand leaf
+  of a Persian book. The page follows the finger and settles back if the drag
+  is too short (under ~۱۲٪ of the screen). A gesture that starts out vertical
+  is left to scrolling, one that starts in the screen's edge gutters is left
+  to the browser's back gesture, and swiping does nothing while the drawer is
+  open or text is selected for a quote card. `prefers-reduced-motion` keeps
+  the page turn without the slide.
 - **Continuous listening**: when a chapter's narration ends, the site
   moves to the next chapter and resumes playback automatically once its
   audio loads. Within-chapter page flips never interrupt audio. (If a
