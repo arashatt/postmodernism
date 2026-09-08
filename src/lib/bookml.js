@@ -213,7 +213,7 @@ export function paginate(parsed, maxWords = 600) {
   let section = null;
   const openPage = (heading, cont = false) => {
     page += 1;
-    pages.push({ heading, section, cont });
+    pages.push({ heading, section, cont, words: 0 });
     budget = 0;
   };
 
@@ -223,6 +223,7 @@ export function paginate(parsed, maxWords = 600) {
     if (i === 0) {
       openPage(isH2 ? b.text : null);
       budget = epiWords;                       // epigraph rides page 1
+      pages[0].words += epiWords;
     } else if (isH2) {
       openPage(b.text);
     } else if (budget > 0 && budget + blockWords[i] > maxWords
@@ -232,6 +233,7 @@ export function paginate(parsed, maxWords = 600) {
     if (isH2) headingPage.push(page);
     blockPage[i] = page;
     budget += blockWords[i];
+    pages[page - 1].words += blockWords[i];
   });
   if (page === 0) openPage(null);              // empty-chapter safety
 
@@ -243,5 +245,6 @@ export function paginate(parsed, maxWords = 600) {
     if (i >= n) return count;
     return blockPage[i];
   };
-  return { count, pages, blockPage, headingPage, off, pageOfBi };
+  const words = pages.reduce((n, pg) => n + pg.words, 0);
+  return { count, pages, blockPage, headingPage, off, pageOfBi, words };
 }

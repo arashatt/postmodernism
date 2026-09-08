@@ -339,6 +339,10 @@ Chapters are automatically paginated by two combined rules:
 Tune the budget in the manifest's `book` object: `"pageWords": 450` for
 shorter pages, larger for longer. Short chapters stay single-page.
 
+Each page also says roughly how long it takes — «بخشِ ۱ از ۳ ــ حدود ۱۰ دقیقه»,
+counted from the page's own words at ~۱۸۰ words a minute — and a hairline under
+the running head fills from the right as the reader moves down the page.
+
 Routes: `#/fasl-1` is page 1, `#/fasl-1/p-2` is page 2, and the back
 button walks pages. The nav at the page foot shows the previous/next
 **section title** (RTL order: previous on the right, next on the left),
@@ -357,6 +361,11 @@ narration crosses a section boundary — audio remains one file per chapter.
 
 ## Keyboard, listening, and reading comforts
 
+- **`#/resume`** reopens the book where it was left: it resolves the saved
+  position and hands over to that chapter's resume anchor (the title page if
+  nothing is saved yet). It is what the **«ادامهٔ خواندن»** home-screen shortcut
+  points at — long-press the installed icon on Android to get it — and it
+  replaces itself in history, so the back button never bounces through it.
 - **Arrow keys** page through the book in reading order — ← advances,
   → goes back — crossing chapter boundaries like the foot links. Ignored
   while typing, over the seek bar, or with the menu open.
@@ -391,7 +400,7 @@ and the menu) from your terminology markers. The rule:
   (no preceding «…»): stays a normal footnote, kept out of the glossary.
 
 Nothing to maintain — the page regenerates from the chapter files on load.
-The chapter id `vajenameh` is reserved.
+The chapter ids `vajenameh` and `resume` are reserved.
 
 ## نقل (quote cards)
 

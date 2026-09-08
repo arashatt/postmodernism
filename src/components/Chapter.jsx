@@ -85,6 +85,7 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
 
   const audioRef = useRef(null);
   const mainRef = useRef(null);
+  const progressRef = useRef(null);
   const bodyRef = useRef(null);
   const wordEls = useRef([]);
   const timesRef = useRef(null);
@@ -469,6 +470,38 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, meta.id, page]);
 
+  // ---- progress ----
+  // A hairline under the running head, filled by how far down this page the
+  // reader is. Written straight to a CSS variable: this fires on every scroll
+  // frame and must never cause a render.
+  useEffect(() => {
+    if (!doc) return undefined;
+    const bar = progressRef.current;
+    if (!bar) return undefined;
+    let frame = 0;
+    const paintProgress = () => {
+      frame = 0;
+      const room = document.documentElement.scrollHeight - window.innerHeight;
+      const done = room > 40 ? Math.min(Math.max(window.scrollY / room, 0), 1) : 0;
+      bar.style.setProperty('--done', done.toFixed(4));
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(paintProgress); };
+    paintProgress();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    // The page keeps growing after mount — blocks fade in, the webfont lands,
+    // footnotes settle — and none of that fires a scroll event, so a rule
+    // painted once would sit at a ratio measured against a shorter page.
+    const ro = new ResizeObserver(onScroll);
+    ro.observe(document.body);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      ro.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [doc, page]);
+
   // ---- controls ----
   const fmt = (t) => {
     t = Math.max(0, t | 0);
@@ -563,6 +596,9 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
   const pg = doc.pagination;
   const off = pg.off;
   const paged = pageCount > 1;
+  // ~180 words a minute: this is dense prose, not a newspaper.
+  const minutes = Math.max(1, Math.round((pg.pages[page - 1]?.words || 0) / 180));
+  const pageLine = `${paged ? `بخشِ ${faDigits(page)} از ${faDigits(pageCount)} ــ ` : ''}حدود ${faDigits(minutes)} دقیقه`;
   const prevCh = manifest.chapters[index - 1];
   const nextCh = manifest.chapters[index + 1];
 
@@ -595,17 +631,18 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
 
   return (
     <main ref={mainRef}>
+      <div className="page-progress" role="presentation"><i ref={progressRef} /></div>
       {page === 1 ? (
         <div className="chapter-open">
           {chLabel && <p className="chlabel">{chLabel}</p>}
           <div className="ornament" role="presentation"><span>٭</span></div>
           <h1>{meta.title}</h1>
-          {paged && <p className="pg-top">بخشِ {faDigits(page)} از {faDigits(pageCount)}</p>}
+          <p className="pg-top">{pageLine}</p>
         </div>
       ) : (
         <div className="chapter-open compact">
           <p className="chlabel">{chLabel ? `${chLabel} ــ ` : ''}{meta.title}</p>
-          <p className="pg-top">بخشِ {faDigits(page)} از {faDigits(pageCount)}</p>
+          <p className="pg-top">{pageLine}</p>
         </div>
       )}
 

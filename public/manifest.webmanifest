@@ -10,7 +10,10 @@
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
-  "categories": ["books", "education"],
+  "categories": [
+    "books",
+    "education"
+  ],
   "icons": [
     {
       "src": "icons/icon-192.png",
@@ -45,9 +48,27 @@
   ],
   "shortcuts": [
     {
+      "name": "ادامهٔ خواندن",
+      "short_name": "ادامه",
+      "url": "./#/resume",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
       "name": "واژه‌نامه",
       "url": "./#/vajenameh",
-      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }

@@ -135,6 +135,16 @@ export default function App() {
     setMenuOpen(false);
   }, [route.id, route.anchor]);
 
+  // #/resume — where the home-screen shortcut lands. Resolve the saved place
+  // and hand over to the chapter's own resume anchor; replace() so the back
+  // button does not bounce through here. No saved place: the title page.
+  useEffect(() => {
+    if (route.id !== 'resume' || !manifest) return;
+    const pos = getPos();
+    const known = pos && manifest.chapters.some((c) => c.id === pos.chapterId);
+    window.location.replace(known ? `#/${pos.chapterId}/resume` : '#/');
+  }, [route.id, manifest]);
+
   if (error) return <div className="notfound">فهرست کتاب بارگذاری نشد.</div>;
   if (!manifest) return <div className="loading">…</div>;
 
