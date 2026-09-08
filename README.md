@@ -184,13 +184,40 @@ before `svh` for iOS < 15.4; ≥ 44 px tap targets on all controls;
 `touch-action: manipulation` (no double-tap-zoom delay on player buttons);
 `-webkit-text-size-adjust: 100%`; beyt hemistichs stack below 640 px so
 verse never overflows; drawer uses momentum scrolling; audio starts only on
-tap (satisfies mobile autoplay policies); fonts load with `display=swap`
-so text renders before Amiri arrives.
+tap (satisfies mobile autoplay policies); the typefaces are self-hosted, so
+the first paragraph never waits on a third-party server.
 
 Worth a quick on-device pass after deploy: play/pause and seek on iOS
 Safari, word-tap seeking accuracy, the drawer over the notch in landscape,
 and — once installed to the home screen — the status bar in روز/شب (see
 «نصب روی گوشی» below).
+
+## Typefaces
+
+Amiri (the reading face) and Vazirmatn (the ساده setting) are **self-hosted**
+from `src/fonts/`, declared as `@font-face` at the top of `src/index.css`:
+
+- The book always renders in its own face. Nothing is fetched from Google, so
+  there is no third-party round trip before the first paragraph and no silent
+  fallback to a system serif where those servers are slow or blocked — which is
+  most of the point for readers in Iran. Quote cards, which draw text on a
+  canvas and need the face already loaded, are covered by the same guarantee.
+- The files are the same woff2 subsets Google serves, with the same
+  `unicode-range` declarations, so glyph coverage is unchanged: Amiri per weight
+  (400/700 × Arabic + Latin) and Vazirmatn as one variable file per subset.
+  332 KB in total, hashed into `assets/` by the build and precached with the
+  shell, so after the first visit they cost nothing.
+- `font-display: swap` means the very first visit may show a fallback for an
+  instant before Amiri paints. Change it to `block` in the `@font-face` blocks
+  if you would rather show nothing than the wrong face.
+- Both families are OFL 1.1; the licences ship beside them as
+  `src/fonts/OFL-Amiri.txt` and `OFL-Vazirmatn.txt`.
+
+**To change a typeface:** drop the woff2 in `src/fonts/`, edit the matching
+`@font-face` block, and keep the family name — `--fa-font` and
+`:root[data-font="vazir"]` in `src/index.css` refer to families, not files.
+EB Garamond used to be requested but was never rendered (Latin text uses
+Georgia, see the `.lr` rule), so it is gone.
 
 ## نصب روی گوشی (PWA)
 
@@ -216,7 +243,7 @@ with the hashed asset names baked in. It keeps two caches:
 |---|---|---|
 | app shell (`index.html`, `assets/…`, icons, cover) | precache, cache-first | replaced as a set on each release |
 | `chapters/…` (manifest, chapter files, about) | stale-while-revalidate | the **whole book is pulled in on the first visit**, so a reader who opened the home page once can read every chapter offline |
-| Google Fonts | cache-first | Amiri/Vazirmatn/EB Garamond survive offline |
+| the typefaces | precached with the shell | self-hosted, so they are simply part of `assets/` |
 | `audio/…` | **never touched** | recordings are streamed with range requests and are far too large to cache; the player and read-along need a connection |
 
 Editing content on the server still needs no rebuild. A reader whose cache

@@ -9,8 +9,8 @@
 //   assets/…       cache-first (filenames are content-hashed)
 //   chapters/…     stale-while-revalidate — instant, refreshed in the
 //                  background so server-side edits still land without a build
-//   Google Fonts   cache-first (files) / stale-while-revalidate (the css)
-// Everything else falls through to the network untouched.
+// Everything else falls through to the network untouched. The typefaces are
+// self-hosted, so they ride along in assets/ with the rest of the shell.
 
 const VERSION = '__VERSION__';
 const SHELL = __SHELL__;
@@ -21,7 +21,7 @@ const SHELL = __SHELL__;
 const MATCH = { ignoreVary: true };
 
 const SHELL_CACHE = `ketab-shell-${VERSION}`;
-const CONTENT_CACHE = 'ketab-content';       // chapters + fonts: outlives releases
+const CONTENT_CACHE = 'ketab-content';       // chapters: outlives releases
 const KEEP = [SHELL_CACHE, CONTENT_CACHE];
 
 // ---------- install: precache the shell, then warm the whole book ----------
@@ -102,11 +102,7 @@ self.addEventListener('fetch', (event) => {
     if (/(^|\/)chapters\//.test(url.pathname)) { event.respondWith(swr(event, CONTENT_CACHE)); return; }
     if (/(^|\/)assets\//.test(url.pathname)) { event.respondWith(cacheFirst(event, SHELL_CACHE)); return; }
     event.respondWith(swr(event, SHELL_CACHE));
-    return;
   }
-
-  if (url.hostname === 'fonts.gstatic.com') { event.respondWith(cacheFirst(event, CONTENT_CACHE)); return; }
-  if (url.hostname === 'fonts.googleapis.com') { event.respondWith(swr(event, CONTENT_CACHE)); return; }
 });
 
 async function appShell(req) {
@@ -144,7 +140,7 @@ function swr(event, cacheName) {
   })();
 }
 
-// Opaque (cross-origin, no-cors) font responses have status 0 but replay fine.
+// Opaque (cross-origin, no-cors) responses have status 0 but replay fine.
 const keepable = (res) => !!res && (res.ok || res.type === 'opaque');
 
 const unavailable = () =>
