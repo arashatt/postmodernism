@@ -4,7 +4,9 @@
 // filling the two placeholders below in with the hashed build output.
 //
 // Caching rules, in the order the fetch handler applies them:
-//   audio/…        never touched — voiceover is streamed with range requests
+//   audio/…        served from the download cache when the reader saved it
+//                  (range requests answered here), otherwise straight to
+//                  the network — a stream we never cache behind their back
 //   navigations    the precached app shell, network only as a fallback
 //   assets/…       cache-first (filenames are content-hashed)
 //   chapters/…     stale-while-revalidate — instant, refreshed in the
@@ -22,7 +24,8 @@ const MATCH = { ignoreVary: true };
 
 const SHELL_CACHE = `ketab-shell-${VERSION}`;
 const CONTENT_CACHE = 'ketab-content';       // chapters: outlives releases
-const KEEP = [SHELL_CACHE, CONTENT_CACHE];
+const AUDIO_CACHE = 'ketab-audio';           // narration the reader chose to keep
+const KEEP = [SHELL_CACHE, CONTENT_CACHE, AUDIO_CACHE];
 
 // ---------- install: precache the shell, then warm the whole book ----------
 
@@ -86,7 +89,6 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (req.method !== 'GET') return;
 
   let url;
   try { url = new URL(req.url); } catch { return; }
@@ -94,7 +96,15 @@ self.addEventListener('fetch', (event) => {
 
   const sameOrigin = url.origin === self.location.origin;
 
-  if (sameOrigin && /(^|\/)audio\//.test(url.pathname)) return;   // streamed, ranged, large
+  // Narration: only what the reader downloaded is ours to answer. The HEAD
+  // the app probes with has to be answered too, or a saved chapter would look
+  // absent offline and never show its player.
+  if (sameOrigin && /(^|\/)audio\//.test(url.pathname)) {
+    if (req.method === 'GET' || req.method === 'HEAD') event.respondWith(narration(req));
+    return;
+  }
+
+  if (req.method !== 'GET') return;
 
   if (req.mode === 'navigate') { event.respondWith(appShell(req)); return; }
 
@@ -103,6 +113,51 @@ self.addEventListener('fetch', (event) => {
     if (/(^|\/)assets\//.test(url.pathname)) { event.respondWith(cacheFirst(event, SHELL_CACHE)); return; }
     event.respondWith(swr(event, SHELL_CACHE));
   }
+});
+
+// Downloaded narration. A cached audio file is useless unless the worker can
+// answer `Range` itself: Safari always asks for one, and a 200 with the whole
+// body makes it refuse to seek (often to play at all).
+async function narration(req) {
+  const cache = await caches.open(AUDIO_CACHE);
+  const hit = await cache.match(req.url, MATCH);
+  if (!hit) {
+    try { return await fetch(req); } catch { return unavailable(); }
+  }
+
+  const type = hit.headers.get('Content-Type') || 'application/octet-stream';
+  const body = await hit.arrayBuffer();
+  const range = req.headers.get('range');
+
+  if (req.method === 'HEAD') {
+    return new Response(null, { status: 200, headers: headers(type, body.byteLength) });
+  }
+  if (!range) {
+    return new Response(body, { status: 200, headers: headers(type, body.byteLength) });
+  }
+
+  const m = /bytes=(\d*)-(\d*)/.exec(range);
+  const start = m && m[1] ? Number(m[1]) : 0;
+  const last = body.byteLength - 1;
+  const end = m && m[2] ? Math.min(Number(m[2]), last) : last;
+  if (!m || start > last || end < start) {
+    return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${body.byteLength}` } });
+  }
+  const slice = body.slice(start, end + 1);
+  return new Response(slice, {
+    status: 206,
+    statusText: 'Partial Content',
+    headers: {
+      ...headers(type, slice.byteLength),
+      'Content-Range': `bytes ${start}-${end}/${body.byteLength}`,
+    },
+  });
+}
+
+const headers = (type, length) => ({
+  'Content-Type': type,
+  'Content-Length': String(length),
+  'Accept-Ranges': 'bytes',
 });
 
 async function appShell(req) {

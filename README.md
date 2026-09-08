@@ -112,7 +112,7 @@ explicitly on the chapter entry in the manifest.
 Behavior:
 
 - No files → readers see no player at all.
-- Audio only → a minimal player bar appears (play, seek, speed).
+- Audio only → a minimal player bar appears (play, seek, speed, download).
 - Audio + SRT/VTT → full read-along: the chapter text dims, read words
   return to ink, the current word inverts, the page auto-scrolls, and
   clicking any word seeks the audio there.
@@ -132,6 +132,28 @@ and locks on even if the recording covers only part of the chapter
 **Testing before upload:** open any chapter with `?dev` in the URL
 (`https://…/?dev#/fasl-1`). The player bar appears with file pickers so you
 can try a local mp3/srt pair; readers never see these controls.
+
+### ذخیرهٔ خوانش — listening offline
+
+The ⤓ button in the player bar downloads that chapter's recording (and its
+timing file, so read-along works too) onto the device. It then shows ✓ and its
+size; tapping again removes it. Nothing is stored unless the reader asks — a
+recording can be tens of megabytes, and streaming stays the default.
+
+Mechanically: the page writes into a `ketab-audio` cache, and the service
+worker serves it back **answering range requests itself** (`narration()` in
+`src/sw.js`) — Safari always asks for a byte range, and a cached file it cannot
+range over is one it refuses to seek in, often to play at all. A chapter that
+was not downloaded still goes straight to the network, exactly as before.
+The cache is the only record of what is saved, so it cannot drift; the site
+also asks for persistent storage the first time, which browsers grant to
+installed apps and otherwise decide for themselves.
+
+**Detection note:** a chapter counts as having a recording only when the server
+answers with something that is not HTML. Cloudflare's
+`not_found_handling: "single-page-application"` (and most static hosts) return
+`index.html` with **200** for a file that was never uploaded, which used to
+raise an empty player bar on chapters that had no narration at all.
 
 ---
 
@@ -244,7 +266,7 @@ with the hashed asset names baked in. It keeps two caches:
 | app shell (`index.html`, `assets/…`, icons, cover) | precache, cache-first | replaced as a set on each release |
 | `chapters/…` (manifest, chapter files, about) | stale-while-revalidate | the **whole book is pulled in on the first visit**, so a reader who opened the home page once can read every chapter offline |
 | the typefaces | precached with the shell | self-hosted, so they are simply part of `assets/` |
-| `audio/…` | **never touched** | recordings are streamed with range requests and are far too large to cache; the player and read-along need a connection |
+| `audio/…` | only what the reader downloads | «ذخیرهٔ خوانش» stores a chapter's recording in a `ketab-audio` cache the worker serves range requests from; everything else streams from the network |
 
 Editing content on the server still needs no rebuild. A reader whose cache
 already holds a chapter sees the edited text on their **next** visit — the

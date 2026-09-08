@@ -3,6 +3,7 @@ import { parseBookML, paginate, normalize, faDigits, ORDINALS, ABJAD } from '../
 import { parseCues, cueWords, align } from '../lib/readalong.js';
 import { getPos, setPos } from '../lib/store.js';
 import { bindSwipeNav, damp } from '../lib/swipe.js';
+import * as offline from '../lib/offlineAudio.js';
 import QuoteCapture from './QuoteCard.jsx';
 
 const RATES = [1, 1.25, 1.5, 0.75];
@@ -70,6 +71,11 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
   const [missing, setMissing] = useState(false);
   const [page, setPage] = useState(1);
   const [audioSrc, setAudioSrc] = useState(null);
+  const [cueSrc, setCueSrc] = useState(null);
+  const [saved, setSaved] = useState(false);        // narration kept on device
+  const [savedBytes, setSavedBytes] = useState(0);
+  const [saving, setSaving] = useState(null);       // 0..1 while downloading
+  const [saveErr, setSaveErr] = useState(false);
   const [hasSync, setHasSync] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [rateIdx, setRateIdx] = useState(0);
@@ -236,23 +242,65 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
     } catch { /* private mode */ }
     const audioCandidates = meta.audio ? [meta.audio] : [`audio/${meta.id}.mp3`, `audio/${meta.id}.m4a`, `audio/${meta.id}.ogg`];
     const cueCandidates = meta.cues ? [meta.cues] : [`audio/${meta.id}.srt`, `audio/${meta.id}.vtt`];
+    // A host that falls back to the SPA (Cloudflare's single-page-application
+    // handling, and most static hosts) answers 200 with index.html for a file
+    // that was never uploaded — so «it responded» is not «it exists».
+    const isFile = (r) => r.ok && !(r.headers.get('content-type') || '').includes('html');
     (async () => {
       for (const src of audioCandidates) {
         try {
           const r = await fetch(src, { method: 'HEAD' });
-          if (r.ok && live) { setAudioSrc(src); break; }
+          if (isFile(r) && live) { setAudioSrc(src); break; }
         } catch { /* not uploaded yet */ }
       }
       for (const src of cueCandidates) {
         try {
           const r = await fetch(src);
-          if (r.ok && live) { applyCues(await r.text()); break; }
+          if (isFile(r) && live) { setCueSrc(src); applyCues(await r.text()); break; }
         } catch { /* no cues yet */ }
       }
     })();
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta.id, doc]);
+
+  // ---- narration kept for offline listening ----
+  // The `ketab-audio` cache is the only record of what is saved; the dev
+  // file-picker's blob: URLs are nobody's to keep.
+  const savable = !!audioSrc && !audioSrc.startsWith('blob:') && offline.supported();
+
+  useEffect(() => {
+    let live = true;
+    if (!savable) { setSaved(false); setSavedBytes(0); return undefined; }
+    (async () => {
+      const has = await offline.isSaved(audioSrc);
+      if (!live) return;
+      setSaved(has);
+      setSavedBytes(has ? await offline.savedSize([audioSrc, cueSrc]) : 0);
+    })();
+    return () => { live = false; };
+  }, [savable, audioSrc, cueSrc]);
+
+  const saveNarration = async () => {
+    if (!savable) return;
+    setSaveErr(false);
+    setSaving(0);
+    try {
+      const bytes = await offline.save([audioSrc, cueSrc], (p) => setSaving(p ?? 0));
+      setSaved(true);
+      setSavedBytes(bytes);
+    } catch {
+      setSaveErr(true);
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const dropNarration = async () => {
+    await offline.drop([audioSrc, cueSrc]);
+    setSaved(false);
+    setSavedBytes(0);
+  };
 
   function applyCues(cueText) {
     if (!doc) return;
@@ -659,6 +707,31 @@ export default function Chapter({ manifest, index, anchor, setFolio, pagesInfo }
               <span className="knob" style={{ left: prog.d ? `${(prog.t / prog.d) * 100}%` : 0 }} />
             </span>
           </span>
+          {savable && (
+            <button
+              className={`dl-btn${saved ? ' done' : ''}`}
+              onClick={saved ? dropNarration : saveNarration}
+              disabled={saving !== null}
+              aria-label={saved
+                ? `حذف خوانشِ ذخیره‌شده${savedBytes ? ` (${offline.faSize(savedBytes)})` : ''}`
+                : saveErr ? 'ذخیره نشد؛ دوباره بزنید' : 'ذخیرهٔ خوانش برای شنیدن بی‌اینترنت'}
+              data-tip={saved
+                ? `خوانشِ این فصل روی دستگاه ذخیره شده${savedBytes ? ` ــ ${offline.faSize(savedBytes)}` : ''}؛ برای حذف بزنید`
+                : saveErr ? 'ذخیره نشد؛ دوباره بزنید' : 'خوانش را ذخیره کنید تا بی‌اینترنت هم شنیده شود'}
+            >
+              {saving !== null
+                ? <span className="dl-pct">{faDigits(String(Math.round(saving * 100)))}٪</span>
+                : saved
+                  ? <span className="dl-done" aria-hidden="true">✓</span>
+                  : (
+                    <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="none"
+                         stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3v11" /><path d="M8 10.5 12 14.5 16 10.5" />
+                      <path d="M5 16v3.5h14V16" />
+                    </svg>
+                  )}
+            </button>
+          )}
           <button className="rate" onClick={cycleRate} aria-label="سرعت پخش">
             ×{faDigits(String(RATES[rateIdx])).replace('.', '٫')}
           </button>
