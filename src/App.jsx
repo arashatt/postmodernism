@@ -4,8 +4,10 @@ import Chapter from './components/Chapter.jsx';
 import Menu from './components/Menu.jsx';
 import Glossary from './components/Glossary.jsx';
 import UpdateBar from './components/UpdateBar.jsx';
+import NewChapterBar from './components/NewChapterBar.jsx';
 import { parseBookML } from './lib/bookml.js';
-import { getPos, getMarks, addMark, removeMark, getSettings, setSettings } from './lib/store.js';
+import { getPos, getMarks, addMark, removeMark, getSettings, setSettings,
+         getSeenChapters, setSeenChapters } from './lib/store.js';
 import { blockTexts, paginate } from './lib/bookml.js';
 import { indexRow } from './lib/search.js';
 
@@ -57,6 +59,7 @@ export default function App() {
   const [searchIdx, setSearchIdx] = useState([]);
   const [pagesInfo, setPagesInfo] = useState({});
   const [settings, setSettingsState] = useState(getSettings);
+  const [fresh, setFresh] = useState([]);        // chapters added since last visit
   const route = useHashRoute();
 
   useEffect(() => {
@@ -82,7 +85,15 @@ export default function App() {
   useEffect(() => {
     fetch('chapters/manifest.json')
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then(setManifest)
+      .then((m) => {
+        setManifest(m);
+        // Chapters arrive one at a time, months apart: say so, once. A reader
+        // whose first visit this is has nothing to be told about.
+        const ids = (m.chapters || []).map((c) => c.id);
+        const seen = getSeenChapters();
+        if (seen && seen.length) setFresh((m.chapters || []).filter((c) => !seen.includes(c.id)));
+        setSeenChapters(ids);
+      })
       .catch(() => setError(true));
   }, []);
 
@@ -178,7 +189,10 @@ export default function App() {
       ) : (
         <Home manifest={manifest} headings={headings} setFolio={setFolio} pos={getPos()} hasGlossary={terms.length > 0} />
       )}
-      <UpdateBar />
+      <div className="bar-stack">
+        <NewChapterBar chapters={fresh} onClose={() => setFresh([])} />
+        <UpdateBar />
+      </div>
       <footer>
         <div className="ornament" role="presentation"><span>٭</span></div>
         <p>{manifest.book.publisher} ــ {manifest.book.city}، {manifest.book.year}</p>

@@ -272,13 +272,25 @@ Editing content on the server still needs no rebuild. A reader whose cache
 already holds a chapter sees the edited text on their **next** visit — the
 worker serves the cached copy and refreshes it in the background.
 
+### New chapters and the «فصل تازه» pill
+
+The book grows a file at a time, so a chapter arriving on the server used to be
+silent. The site now remembers which chapter ids a reader has seen
+(`ketab:chapters` in localStorage) and, when the manifest brings one they have
+not, shows a pill naming it with a link straight to it — once, not on every
+visit. A first-ever visit announces nothing, since everything is new.
+
+Because chapters are stale-while-revalidate, the announcement lands on the visit
+where the new chapter is actually in the table of contents, not the one where
+the worker is still refreshing it in the background.
+
 ### Releases and the «به‌روزرسانی» pill
 
 The worker's version is a digest of the build output, so a rebuild that
 changes nothing ships a byte-identical worker and no one is nagged. When a
 release does change something, readers already on the site get a small pill
 at the foot of the page — «نسخهٔ تازهٔ کتاب آماده است» — and nothing reloads
-until they tap it. Readers who come back later simply get the new version.
+until they tap it. Both pills share one stack, so they never overlap. Readers who come back later simply get the new version.
 
 ### Icons and the app name
 

@@ -39,3 +39,16 @@ export function setSettings(next) {
   try { localStorage.setItem(K_SET, JSON.stringify(next)); } catch { /* unavailable */ }
   return next;
 }
+
+// Chapter ids the reader has already been told about, so a chapter added to
+// the manifest later can announce itself exactly once. null = never recorded,
+// which is a first visit: nothing to announce.
+const K_SEEN = 'ketab:chapters';
+
+export function getSeenChapters() {
+  try { return JSON.parse(localStorage.getItem(K_SEEN)); } catch { return null; }
+}
+export function setSeenChapters(ids) {
+  try { localStorage.setItem(K_SEEN, JSON.stringify(ids)); } catch { /* unavailable */ }
+  return ids;
+}
