@@ -28,9 +28,19 @@ npm run dev        # local dev server
 npm run build      # production build → dist/
 ```
 
+```sh
+npm test           # the worker's own checks (see «ورود با تلگرام»)
+npm run deploy     # build + `wrangler deploy` to Cloudflare
+```
+
 Deploy by copying `dist/` to any static host (LiteSpeed, nginx, Apache —
-no server-side code). `vite.config.js` uses `base: './'`, so it works from
-the domain root or any subdirectory.
+the book itself needs no server-side code). `vite.config.js` uses
+`base: './'`, so it works from the domain root or any subdirectory.
+
+The one part that is **not** static is the optional Telegram sign-in, which
+lives in `worker/` and runs on Cloudflare Workers — see «ورود با تلگرام»
+at the end of this file. Leave it unconfigured and the site behaves exactly
+as it did before it existed.
 
 **Important:** chapters, the manifest, and audio are fetched at runtime,
 not bundled. After the first deploy you never need to rebuild for content:
@@ -346,3 +356,113 @@ at ~420 characters and the type size adapts to length.
 The ☰ (upper left) and «نشان» buttons show an explanatory tooltip after
 hovering ~0.85 s (also on keyboard focus). Tooltips are disabled on touch
 devices, where hover doesn't exist.
+
+---
+
+## ورود با تلگرام و فرستادن موقعیت
+
+Readers can sign in with their Telegram account and, if they choose to,
+attach their location to that account. **Both are off until you configure
+them**: with no bot token set, `/api/me` reports itself unconfigured, the
+drawer shows no «حساب تلگرام» section at all, and nothing about the
+reading site changes.
+
+### What the reader sees
+
+|  | signing in | location |
+|---|---|---|
+| **site opened inside Telegram** (Mini App) | automatic — Telegram hands the page a signed `initData` | Telegram's own location manager (Bot API 8.0+ clients) |
+| **an ordinary browser** | the Telegram login button | the bot asks in their chat; or, failing that, the browser's own geolocation |
+
+Worth being plain about: **Telegram has no API that reads someone's
+position without them tapping for it.** A bot can only send a keyboard
+button with `request_location`, and a Mini App can only ask the client,
+which asks the reader. Both paths here are a request the reader answers,
+and the stored fix is a single latest position they can delete from the
+drawer («پاک کردن») at any time. It expires by itself after thirty days.
+
+### Setting it up
+
+**① The bot.** In [@BotFather](https://t.me/BotFather): `/newbot` for the
+token, then `/setdomain` pointed at your site — the login widget refuses to
+render on a domain the bot has not claimed. To have the site open *inside*
+Telegram as well, `/newapp` (or the Menu Button) with the same URL.
+
+**② The secrets**, none of which belong in the repository:
+
+```sh
+npx wrangler secret put TELEGRAM_BOT_TOKEN        # from BotFather
+npx wrangler secret put SESSION_SECRET            # any long random string
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET   # any long random string
+```
+
+`SESSION_SECRET` signs the session cookie; changing it signs everyone out.
+
+**③ The bot's @name** goes in `wrangler.json` — it is public, the widget
+needs it:
+
+```json
+"vars": { "TELEGRAM_BOT_USERNAME": "your_bot" }
+```
+
+**④ Somewhere to keep a location.** Only needed for the bot flow, because
+the reader's answer arrives at the webhook rather than in the page:
+
+```sh
+npx wrangler kv namespace create LOCATIONS
+```
+
+and paste what it prints into `wrangler.json`:
+
+```json
+"kv_namespaces": [{ "binding": "LOCATIONS", "id": "…" }]
+```
+
+**⑤ Deploy, then point the webhook at it** (the secret is the one from ②;
+Telegram sends it back in a header, and updates arriving without it are
+refused):
+
+```sh
+npm run deploy
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+  -d "url=https://<your-site>/api/telegram/webhook" \
+  -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+```
+
+### The API
+
+`worker/index.js` serves everything under `/api/`; every other path is the
+static site, handed to the assets binding (so the SPA fallback is unchanged).
+
+| route | |
+|---|---|
+| `GET /api/me` | is the API configured, who is signed in, their stored location |
+| `POST /api/login/widget` | verifies a login-widget payload, sets the session cookie |
+| `POST /api/login/webapp` | the same for a Mini App's `initData` |
+| `POST /api/logout` | clears it |
+| `GET·POST·DELETE /api/location` | read, store, forget the latest fix |
+| `POST /api/location/request` | have the bot ask the reader for one |
+| `POST /api/telegram/webhook` | where the answer arrives |
+
+Both sign-in payloads are checked the way Telegram documents — HMAC-SHA256
+over the sorted fields, keyed by `SHA256(token)` for the widget and by
+`HMAC("WebAppData", token)` for a Mini App — plus a 24-hour freshness
+window, so a captured payload cannot be replayed later. The session is a
+signed cookie (`HttpOnly`, `SameSite=Lax`), so there is no session table to
+keep. A reader's id is never taken from the page's word for it.
+
+`npm test` covers all of that: it rebuilds Telegram's signatures with
+`node:crypto` and drives every route above against stubbed bindings, with
+no network and no framework.
+
+### Notes
+
+- `/api/` is excluded from the service worker, so a reader's own data is
+  never served from the offline cache.
+- Telegram appends `tgWebApp*` parameters to the URL hash, which the book
+  uses for its routes; `src/lib/telegram.js` removes them once the SDK has
+  read them (they carry the signed `initData`, so a copied link should not
+  keep them) and the router ignores them meanwhile.
+- Telegram's scripts are only fetched when they are actually needed — the
+  Mini App SDK only inside Telegram, the login widget only when the sign-in
+  button is shown — so an ordinary reader of the book loads neither.
