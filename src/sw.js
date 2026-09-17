@@ -5,6 +5,7 @@
 //
 // Caching rules, in the order the fetch handler applies them:
 //   audio/…        never touched — voiceover is streamed with range requests
+//   api/…          never touched — a signed-in reader's own data
 //   navigations    the precached app shell, network only as a fallback
 //   assets/…       cache-first (filenames are content-hashed)
 //   chapters/…     stale-while-revalidate — instant, refreshed in the
@@ -95,6 +96,7 @@ self.addEventListener('fetch', (event) => {
   const sameOrigin = url.origin === self.location.origin;
 
   if (sameOrigin && /(^|\/)audio\//.test(url.pathname)) return;   // streamed, ranged, large
+  if (sameOrigin && /(^|\/)api\//.test(url.pathname)) return;     // sign-in and location: never cached
 
   if (req.mode === 'navigate') { event.respondWith(appShell(req)); return; }
 

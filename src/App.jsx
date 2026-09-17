@@ -12,6 +12,10 @@ import { indexRow } from './lib/search.js';
 function useHashRoute() {
   const parse = () => {
     const h = window.location.hash.replace(/^#\/?/, '');
+    // Telegram appends its own tgWebApp* parameters to the hash when it opens
+    // the site as a Mini App; lib/telegram.js takes them out once the SDK has
+    // read them, and until then they are not a route.
+    if (/^tgWebApp/.test(h)) return { id: null, anchor: null };
     const [id, anchor] = h.split('/').filter(Boolean);
     return { id: id || null, anchor: anchor || null };
   };

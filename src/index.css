@@ -612,6 +612,44 @@ main,blockquote,.footnotes,.colophon,.gloss-row,.chapter-body h2{
   transition:background .2s,color .2s,border-color .2s;
 }
 .install-btn:hover{background:var(--accent);color:var(--paper);border-color:var(--accent)}
+.install-btn:disabled{opacity:.5;cursor:default}
+.install-btn:disabled:hover{background:none;color:var(--ink);border-color:var(--hairline)}
+
+/* ---------- حساب تلگرام ---------- */
+.menu-account .acc-note{
+  font-size:.92rem;line-height:1.95;color:var(--quiet);
+}
+.menu-account .acc-note+.acc-note{margin-top:.25rem}
+.menu-account .acc-quiet a{color:var(--quiet);text-decoration:none;border-bottom:1px solid var(--hairline)}
+.menu-account .acc-warn{color:var(--ink)}
+.acc-login{margin-top:.7rem;min-height:2.5rem}
+/* the widget renders an iframe that assumes ltr */
+.acc-login iframe{direction:ltr;max-width:100%}
+.acc-who{
+  display:flex;align-items:center;gap:.65rem;
+  padding-bottom:.75rem;border-bottom:1px solid var(--hairline);
+}
+.acc-pic{
+  width:2.5rem;height:2.5rem;border-radius:50%;flex:none;
+  object-fit:cover;background:var(--hairline);
+}
+.acc-pic-blank{
+  display:grid;place-items:center;color:var(--quiet);font-size:1.2rem;
+}
+.acc-id{display:flex;flex-direction:column;min-width:0;line-height:1.6}
+.acc-name{font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acc-handle{font-size:.85rem;color:var(--quiet);font-style:normal}
+.acc-out{
+  margin-inline-start:auto;flex:none;
+  font-family:inherit;font-size:.88rem;color:var(--quiet);
+  background:none;border:none;cursor:pointer;padding:.4rem .2rem;
+}
+.acc-out:hover{color:var(--ink)}
+.acc-loc{margin-top:.75rem}
+.acc-actions{display:flex;flex-wrap:wrap;gap:.5rem}
+.acc-actions .install-btn{margin-top:.7rem;font-size:.92rem;padding:.45rem 1.05rem}
+.acc-forget{color:var(--quiet)}
+.acc-num{unicode-bidi:isolate;font-style:normal;font-variant-numeric:tabular-nums}
 .update-bar{
   position:fixed;z-index:30;
   inset-inline:auto;left:50%;transform:translateX(-50%);

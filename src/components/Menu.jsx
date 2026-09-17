@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ORDINALS } from '../lib/bookml.js';
 import { searchBlocks } from '../lib/search.js';
 import InstallHint from './InstallHint.jsx';
+import Account from './Account.jsx';
 
 // Slide-in drawer: search · continue · فهرست · نشان‌ها · settings.
 export default function Menu({
@@ -150,6 +151,8 @@ export default function Menu({
             )}
 
             <InstallHint />
+
+            <Account />
 
             {settings && onSettings && (
               <div className="menu-section menu-settings">
