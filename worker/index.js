@@ -34,6 +34,16 @@ const configured = (env) => Boolean(env.TELEGRAM_BOT_TOKEN && env.SESSION_SECRET
 // Location is kept for as long as a session lasts and no longer.
 const LOCATION_TTL = session.SESSION_TTL;
 const locKey = (id) => `loc:${id}`;
+const trailKey = (id) => `trail:${id}`;
+
+// How many recent points the map draws a path through. A live location that
+// runs for hours would otherwise grow without bound.
+const TRAIL_MAX = 60;
+
+// A fix posted by the page counts as live for this long after it arrives. The
+// page re-posts far more often than this, so the badge stays on while it is
+// tracking and goes out by itself once the tab is closed.
+const DEVICE_LIVE_GRACE = 90;
 
 async function readBody(request) {
   try { return await request.json(); } catch { return null; }
@@ -50,6 +60,34 @@ function putLocation(env, id, loc) {
     .put(locKey(id), JSON.stringify(loc), { expirationTtl: LOCATION_TTL })
     .then(() => true)
     .catch(() => false);
+}
+
+async function getTrail(env, id) {
+  if (!env.LOCATIONS) return [];
+  const rows = await env.LOCATIONS.get(trailKey(id), 'json').catch(() => null);
+  return Array.isArray(rows) ? rows : [];
+}
+
+// Appends a point to the path the map draws. Points that repeat the previous
+// one to five decimal places (about a metre) are dropped: a phone reporting a
+// live location while its owner sits still would otherwise fill the trail.
+async function pushTrail(env, id, loc) {
+  if (!env.LOCATIONS) return;
+  const trail = await getTrail(env, id);
+  const last = trail[trail.length - 1];
+  const same = last
+    && Math.abs(last.latitude - loc.latitude) < 1e-5
+    && Math.abs(last.longitude - loc.longitude) < 1e-5;
+  if (same) return;
+  trail.push({ latitude: loc.latitude, longitude: loc.longitude, at: loc.at });
+  await env.LOCATIONS
+    .put(trailKey(id), JSON.stringify(trail.slice(-TRAIL_MAX)), { expirationTtl: LOCATION_TTL })
+    .catch(() => {});
+}
+
+function clearTrail(env, id) {
+  if (!env.LOCATIONS) return Promise.resolve();
+  return env.LOCATIONS.delete(trailKey(id)).catch(() => {});
 }
 
 // A Mini App sends the initData it was opened with; the website sends what the
@@ -105,7 +143,11 @@ async function api(request, url, env) {
   if (!claims) return json({ error: 'unauthenticated' }, 401);
 
   if (path === '/api/location' && method === 'GET') {
-    return json({ location: await getLocation(env, claims.id) });
+    const [location, trail] = await Promise.all([
+      getLocation(env, claims.id),
+      getTrail(env, claims.id),
+    ]);
+    return json({ location, trail });
   }
 
   // The page already has a fix (Mini App location manager, or the browser's
@@ -123,13 +165,21 @@ async function api(request, url, env) {
       accuracy: Number.isFinite(Number(body.accuracy)) ? Number(body.accuracy) : null,
       source: body.source === 'browser' ? 'browser' : 'miniapp',
       at: Math.floor(Date.now() / 1000),
+      // A device that keeps sending while the map is open is live in the same
+      // sense a Telegram live location is; it just expires much sooner.
+      liveUntil: body.live ? Math.floor(Date.now() / 1000) + DEVICE_LIVE_GRACE : null,
     };
-    return json({ location: loc, stored: await putLocation(env, claims.id, loc) });
+    const stored = await putLocation(env, claims.id, loc);
+    if (stored) await pushTrail(env, claims.id, loc);
+    return json({ location: loc, stored });
   }
 
   if (path === '/api/location' && method === 'DELETE') {
-    if (env.LOCATIONS) await env.LOCATIONS.delete(locKey(claims.id)).catch(() => {});
-    return json({ location: null });
+    if (env.LOCATIONS) {
+      await env.LOCATIONS.delete(locKey(claims.id)).catch(() => {});
+      await clearTrail(env, claims.id);
+    }
+    return json({ location: null, trail: [] });
   }
 
   // Ask the bot to ask the reader. The answer comes back at the webhook, so
@@ -168,27 +218,49 @@ async function webhook(request, env) {
   }
 
   const update = await readBody(request);
-  // Live locations arrive as edits to the message that started them.
+  // A live location is one message that Telegram keeps editing as its sender
+  // moves, so every position after the first arrives as `edited_message`.
+  const edited = Boolean(update && update.edited_message);
   const message = update && (update.message || update.edited_message);
   if (!message || !message.from) return json({ ok: true });
 
   const id = String(message.from.id);
 
   if (message.location) {
+    const at = Math.floor(Date.now() / 1000);
+    // `live_period` is only present while a live location is still running,
+    // so its absence on a later edit is how sharing ends. The deadline is
+    // stored rather than a flag: if that final edit never arrives, the badge
+    // still goes out on its own when the period runs out.
+    const period = Number(message.location.live_period);
+    const live = Number.isFinite(period) && period > 0;
     const loc = {
       latitude: message.location.latitude,
       longitude: message.location.longitude,
       accuracy: message.location.horizontal_accuracy ?? null,
+      heading: Number.isFinite(Number(message.location.heading))
+        ? Number(message.location.heading)
+        : null,
       source: 'telegram',
-      at: Math.floor(Date.now() / 1000),
+      at,
+      liveUntil: live ? at + period : null,
     };
     const stored = await putLocation(env, id, loc);
-    await sendMessage(
-      env.TELEGRAM_BOT_TOKEN,
-      id,
-      stored ? 'موقعیتتان دریافت شد. به صفحهٔ کتاب برگردید.'
-             : 'موقعیتتان دریافت شد، اما ذخیره نشد. بعداً دوباره تلاش کنید.'
-    ).catch(() => {});
+    if (stored) await pushTrail(env, id, loc);
+
+    // Only the message that starts the sharing is answered. Confirming every
+    // edit would send one Telegram message per step the sender takes.
+    if (!edited) {
+      await sendMessage(
+        env.TELEGRAM_BOT_TOKEN,
+        id,
+        stored
+          ? (live
+              ? 'موقعیت زندهٔ شما دریافت شد؛ تا وقتی هم‌رسانی را نبسته‌اید روی نقشهٔ سایت دنبال می‌شود.'
+              : 'موقعیتتان دریافت شد. به صفحهٔ کتاب برگردید.')
+          : 'موقعیتتان دریافت شد، اما ذخیره نشد. بعداً دوباره تلاش کنید.'
+      ).catch(() => {});
+    }
     return json({ ok: true });
   }
 

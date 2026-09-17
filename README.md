@@ -448,7 +448,7 @@ static site, handed to the assets binding (so the SPA fallback is unchanged).
 | `POST /api/login/widget` | verifies a login-widget payload, sets the session cookie |
 | `POST /api/login/webapp` | the same for a Mini App's `initData` |
 | `POST /api/logout` | clears it |
-| `GET·POST·DELETE /api/location` | read, store, forget the latest fix |
+| `GET·POST·DELETE /api/location` | read (with the recent path), store, forget the latest fix |
 | `POST /api/location/request` | have the bot ask the reader for one |
 | `POST /api/telegram/webhook` | where the answer arrives |
 
@@ -462,6 +462,36 @@ keep. A reader's id is never taken from the page's word for it.
 `npm test` covers all of that: it rebuilds Telegram's signatures with
 `node:crypto` and drives every route above against stubbed bindings, with
 no network and no framework.
+
+### The map (`#/naghsheh`)
+
+A signed-in reader gets a full-page OpenStreetMap of where they last were,
+reachable from «حساب تلگرام» in the drawer. It refreshes itself, draws the
+path of the last 60 positions, and shows a «زنده» badge with a countdown
+while a live location is running. Three ways to feed it:
+
+| | how | how long it stays live |
+|---|---|---|
+| **موقعیت فعلی** | one fix, from Telegram's location manager or the browser | not live |
+| **پیگیری از این دستگاه** | `watchPosition`, posted as it changes | while the page is open (+90s) |
+| **زنده از تلگرام** | the reader shares a live location in their chat with the bot | the period Telegram was given |
+
+The important limitation: **a bot cannot ask for a live location.** The
+`request_location` keyboard button returns one fix and nothing more. Live
+sharing is started by the reader, from 📎 → Location → «Share My Live
+Location», and Telegram then edits that one message as they move — which is
+why the webhook treats `edited_message` as a position update and answers
+only the message that starts the sharing. Confirming each edit would send a
+Telegram message per step taken.
+
+`live_period` is stored as a deadline rather than a flag, so if the final
+edit that ends sharing never arrives, the badge still goes out on its own.
+
+Leaflet is imported dynamically and kept out of the service worker's
+precache: it is a third of the bundle, and a reader who never opens the map
+never fetches it. Tiles come straight from `tile.openstreetmap.org` with
+the attribution their usage policy requires, greyscaled in CSS to match the
+book and inverted in the night theme.
 
 ### Notes
 

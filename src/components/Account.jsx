@@ -208,14 +208,19 @@ export default function Account() {
                   {location.at ? ` (${when(location.at)})` : ''}
                 </p>
                 <p className="acc-note acc-quiet">
+                  <a href="#/naghsheh">نمایش روی نقشه</a>
+                  {' · '}
                   <a href={`https://www.openstreetmap.org/?mlat=${location.latitude}&mlon=${location.longitude}#map=13/${location.latitude}/${location.longitude}`}
-                     target="_blank" rel="noreferrer noopener">روی نقشه</a>
+                     target="_blank" rel="noreferrer noopener">در OpenStreetMap</a>
                 </p>
               </>
             ) : (
-              <p className="acc-note">
-                موقعیتی ثبت نشده است. فرستادنش اختیاری است و هر وقت بخواهید پاک می‌شود.
-              </p>
+              <>
+                <p className="acc-note">
+                  موقعیتی ثبت نشده است. فرستادنش اختیاری است و هر وقت بخواهید پاک می‌شود.
+                </p>
+                <p className="acc-note acc-quiet"><a href="#/naghsheh">نقشه</a></p>
+              </>
             )}
 
             <div className="acc-actions">

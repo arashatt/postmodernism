@@ -650,6 +650,52 @@ main,blockquote,.footnotes,.colophon,.gloss-row,.chapter-body h2{
 .acc-actions .install-btn{margin-top:.7rem;font-size:.92rem;padding:.45rem 1.05rem}
 .acc-forget{color:var(--quiet)}
 .acc-num{unicode-bidi:isolate;font-style:normal;font-variant-numeric:tabular-nums}
+
+/* ---------- نقشه ---------- */
+.mappage{
+  max-width:none;
+  padding:calc(var(--headh) + .6rem) 1rem 1.4rem;
+  display:flex;flex-direction:column;gap:.7rem;
+  min-height:100svh;
+}
+.map-bar{
+  display:flex;align-items:baseline;gap:.75rem;
+  font-size:.92rem;line-height:1.9;color:var(--quiet);
+}
+.map-where{min-width:0;flex:1}
+.map-where b{color:var(--ink);font-weight:700}
+.map-where small{color:var(--quiet);font-size:.88em}
+.map-back{margin-inline-start:auto;flex:none;color:var(--quiet)}
+.map-dot{
+  display:inline-block;width:.5rem;height:.5rem;border-radius:50%;
+  background:var(--unread);margin-inline-end:.4rem;vertical-align:.05em;
+}
+.map-dot.on{background:#0a7d33;animation:mappulse 1.8s ease-in-out infinite}
+@keyframes mappulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.map-dot.on{animation:none}}
+.map-holder{
+  flex:1;min-height:22rem;
+  border:1px solid var(--hairline);border-radius:10px;
+  overflow:hidden;background:var(--paper);
+  /* Leaflet's own panes are ltr; the book is not */
+  direction:ltr;
+}
+/* Tiles are colour photographs of the world; the book is not. Mute them,
+   and in the night theme invert so the map does not glare. */
+.map-holder .leaflet-tile-pane{filter:grayscale(1) contrast(.92)}
+:root[data-theme="sepia"] .map-holder .leaflet-tile-pane{filter:grayscale(1) sepia(.35) contrast(.9)}
+:root[data-theme="night"] .map-holder .leaflet-tile-pane{filter:grayscale(1) invert(1) brightness(.85) contrast(.9)}
+.map-holder .leaflet-container{background:var(--paper);font-family:inherit}
+.map-holder .leaflet-control-attribution{font-size:.7rem;background:color-mix(in srgb, var(--paper) 85%, transparent)}
+.map-actions{display:flex;flex-wrap:wrap;gap:.5rem}
+.map-actions .install-btn{margin-top:0;font-size:.92rem;padding:.45rem 1.05rem}
+.install-btn.on{background:var(--accent);color:var(--paper);border-color:var(--accent)}
+.map-note{font-size:.92rem;line-height:1.9;color:var(--quiet)}
+.map-empty{
+  margin-top:2rem;text-align:center;color:var(--quiet);
+  font-size:.98rem;line-height:2;
+}
+.map-empty a{color:var(--ink)}
 .update-bar{
   position:fixed;z-index:30;
   inset-inline:auto;left:50%;transform:translateX(-50%);

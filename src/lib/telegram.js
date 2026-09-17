@@ -99,10 +99,21 @@ async function call(path, options) {
 const post = (path, body) =>
   call(path, { method: 'POST', body: JSON.stringify(body || {}) });
 
+// Signing in and out happens in the drawer, but other parts of the site keep
+// their own idea of who is reading — the map page, for one. Rather than have
+// each of them poll, announce it once here.
+export const AUTH_EVENT = 'ketab:auth';
+
+function announce(res) {
+  try { window.dispatchEvent(new CustomEvent(AUTH_EVENT, { detail: res && res.user ? res.user : null })); }
+  catch { /* no CustomEvent in very old webviews */ }
+  return res;
+}
+
 export const fetchMe = () => call('/api/me');
-export const logout = () => post('/api/logout');
-export const loginWithWidget = (payload) => post('/api/login/widget', payload);
-export const loginWithInitData = (initData) => post('/api/login/webapp', { initData });
+export const logout = () => post('/api/logout').then(announce);
+export const loginWithWidget = (payload) => post('/api/login/widget', payload).then(announce);
+export const loginWithInitData = (initData) => post('/api/login/webapp', { initData }).then(announce);
 export const saveLocation = (location) => post('/api/location', location);
 export const fetchLocation = () => call('/api/location');
 export const forgetLocation = () => call('/api/location', { method: 'DELETE' });

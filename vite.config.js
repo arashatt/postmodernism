@@ -27,8 +27,12 @@ function pwaServiceWorker() {
     name: 'ketab-pwa-sw',
     apply: 'build',
     generateBundle(_options, bundle) {
+      // The map page's chunks are deliberately left out of the shell: they
+      // are a third of the bundle and most readers never open the map. The
+      // worker still caches them on demand the first time it serves them.
+      const onDemand = /leaflet/i
       const hashed = Object.keys(bundle)
-        .filter((f) => f.startsWith('assets/') && !f.endsWith('.map'))
+        .filter((f) => f.startsWith('assets/') && !f.endsWith('.map') && !onDemand.test(f))
         .sort()
         .map((f) => `./${f}`)
       const shell = [...STATIC_SHELL, ...hashed]

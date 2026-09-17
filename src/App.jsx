@@ -3,6 +3,7 @@ import Home from './components/Home.jsx';
 import Chapter from './components/Chapter.jsx';
 import Menu from './components/Menu.jsx';
 import Glossary from './components/Glossary.jsx';
+import MapPage from './components/MapPage.jsx';
 import UpdateBar from './components/UpdateBar.jsx';
 import { parseBookML } from './lib/bookml.js';
 import { getPos, getMarks, addMark, removeMark, getSettings, setSettings } from './lib/store.js';
@@ -132,7 +133,8 @@ export default function App() {
   if (!manifest) return <div className="loading">…</div>;
 
   const onGlossary = route.id === 'vajenameh';
-  const chapterIndex = route.id && !onGlossary
+  const onMap = route.id === 'naghsheh';
+  const chapterIndex = route.id && !onGlossary && !onMap
     ? manifest.chapters.findIndex((c) => c.id === route.id)
     : -1;
   const onChapterPage = chapterIndex >= 0;
@@ -168,7 +170,9 @@ export default function App() {
         settings={settings}
         onSettings={updateSettings}
       />
-      {onGlossary ? (
+      {onMap ? (
+        <MapPage setFolio={setFolio} />
+      ) : onGlossary ? (
         <Glossary manifest={manifest} terms={terms} setFolio={setFolio} />
       ) : onChapterPage ? (
         <Chapter

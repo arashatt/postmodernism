@@ -290,6 +290,99 @@ head('the webhook');
       post({ message: { from: { id: 9 }, text: 'سلام' } }, { 'x-telegram-bot-api-secret-token': HOOK }))).status === 200);
 }
 
+head('a live location');
+{
+  const e = env();
+  const auth = { cookie: signedIn };
+  const hook = { 'x-telegram-bot-api-secret-token': HOOK };
+  const at = now();
+
+  // Sharing starts: one message, carrying live_period.
+  botCalls.length = 0;
+  await call(e, '/api/telegram/webhook', post({
+    message: {
+      from: { id: 4242 }, chat: { id: 4242 },
+      location: { latitude: 35.70, longitude: 51.40, live_period: 900, heading: 90 },
+    },
+  }, hook));
+
+  const first = await e.LOCATIONS.get('loc:4242', 'json');
+  t('the deadline is stored, not a flag', first.liveUntil >= at + 890 && first.liveUntil <= at + 910, first);
+  t('heading is kept', first.heading === 90);
+  t('the sender is told once', botCalls.length === 1);
+  t('and told it is live', botCalls[0]?.body.text.includes('زنده'), botCalls[0]?.body.text);
+
+  // Moving: every later position is an edit of that same message.
+  botCalls.length = 0;
+  for (const [lat, lon] of [[35.71, 51.41], [35.72, 51.42], [35.73, 51.43]]) {
+    await call(e, '/api/telegram/webhook', post({
+      edited_message: { from: { id: 4242 }, location: { latitude: lat, longitude: lon, live_period: 900 } },
+    }, hook));
+  }
+  t('the newest position wins', (await e.LOCATIONS.get('loc:4242', 'json')).latitude === 35.73);
+  t('moving never sends a message', botCalls.length === 0, botCalls.map((c) => c.body.text));
+
+  const withTrail = await json(await call(e, '/api/location', { headers: auth }));
+  t('the path is returned with the fix', withTrail.trail.length === 4, withTrail.trail);
+  t('in the order it was walked',
+    withTrail.trail[0].latitude === 35.70 && withTrail.trail[3].latitude === 35.73);
+
+  // Standing still: a repeated position must not pad the path.
+  await call(e, '/api/telegram/webhook', post({
+    edited_message: { from: { id: 4242 }, location: { latitude: 35.73, longitude: 51.43, live_period: 900 } },
+  }, hook));
+  t('a repeated point is not appended',
+    (await json(await call(e, '/api/location', { headers: auth }))).trail.length === 4);
+
+  // Sharing stops: the final edit arrives without live_period.
+  await call(e, '/api/telegram/webhook', post({
+    edited_message: { from: { id: 4242 }, location: { latitude: 35.74, longitude: 51.44 } },
+  }, hook));
+  const ended = await e.LOCATIONS.get('loc:4242', 'json');
+  t('the deadline is cleared when sharing ends', ended.liveUntil === null, ended);
+  t('but the last position is kept', ended.latitude === 35.74);
+
+  // A one-off location is never live.
+  await call(e, '/api/telegram/webhook', post({
+    message: { from: { id: 4242 }, chat: { id: 4242 }, location: { latitude: 1, longitude: 2 } },
+  }, hook));
+  t('a one-off share is not live', (await e.LOCATIONS.get('loc:4242', 'json')).liveUntil === null);
+}
+
+head('the page as a live source');
+{
+  const e = env();
+  const auth = { cookie: signedIn };
+
+  const plain = await json(await call(e, '/api/location', post({ latitude: 10, longitude: 20 }, auth)));
+  t('a plain fix is not live', plain.location.liveUntil === null);
+
+  const live = await json(await call(e, '/api/location', post({ latitude: 11, longitude: 21, live: true }, auth)));
+  t('a tracked fix is live for a while', live.location.liveUntil > now(), live.location);
+  t('but not for long', live.location.liveUntil < now() + 300);
+
+  const after = await json(await call(e, '/api/location', { headers: auth }));
+  t('posted fixes build the path too', after.trail.length === 2, after.trail);
+
+  const gone = await json(await call(e, '/api/location', { method: 'DELETE', headers: auth }));
+  t('forgetting clears the path as well', gone.trail.length === 0, gone);
+  t('and it stays cleared',
+    (await json(await call(e, '/api/location', { headers: auth }))).trail.length === 0);
+}
+
+head('the path is bounded');
+{
+  const e = env();
+  const auth = { cookie: signedIn };
+  for (let i = 0; i < 75; i++) {
+    await call(e, '/api/location', post({ latitude: 30 + i * 0.01, longitude: 50, live: true }, auth));
+  }
+  const res = await json(await call(e, '/api/location', { headers: auth }));
+  t('a long walk does not grow without bound', res.trail.length === 60, res.trail.length);
+  t('and it is the recent end that is kept',
+    Math.abs(res.trail[res.trail.length - 1].latitude - (30 + 74 * 0.01)) < 1e-9, res.trail.at(-1));
+}
+
 head('signing out');
 {
   const res = await call(env(), '/api/logout', post({}, { cookie: signedIn }));
