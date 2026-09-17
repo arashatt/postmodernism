@@ -406,17 +406,25 @@ needs it:
 ```
 
 **④ Somewhere to keep a location.** Only needed for the bot flow, because
-the reader's answer arrives at the webhook rather than in the page:
+the reader's answer arrives at the webhook rather than in the page. This
+repository already carries a namespace binding in `wrangler.json`, so there
+is nothing to do here unless you are deploying your own copy:
 
 ```sh
 npx wrangler kv namespace create LOCATIONS
 ```
 
-and paste what it prints into `wrangler.json`:
+and paste what it prints in place of the existing one:
 
 ```json
 "kv_namespaces": [{ "binding": "LOCATIONS", "id": "…" }]
 ```
+
+The binding name is what the worker reads (`env.LOCATIONS`); the namespace's
+own title in the Cloudflare dashboard can be anything. Add it to
+`wrangler.json` rather than through the dashboard: this project deploys with
+Workers Builds, which applies the config file on every build and drops
+bindings that only exist in the dashboard. Secrets are unaffected by that.
 
 **⑤ Deploy, then point the webhook at it** (the secret is the one from ②;
 Telegram sends it back in a header, and updates arriving without it are

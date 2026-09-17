@@ -7,12 +7,20 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": [
+      "/api/*"
+    ]
   },
   "compatibility_flags": [
     "nodejs_compat"
   ],
   "vars": {
     "TELEGRAM_BOT_USERNAME": ""
-  }
+  },
+  "kv_namespaces": [
+    {
+      "binding": "LOCATIONS",
+      "id": "49353f753238403b914d2a3dbaf761b9"
+    }
+  ]
 }
