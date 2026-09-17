@@ -15,7 +15,7 @@
     "nodejs_compat"
   ],
   "vars": {
-    "TELEGRAM_BOT_USERNAME": ""
+    "TELEGRAM_BOT_USERNAME": "auth_mebot"
   },
   "kv_namespaces": [
     {
